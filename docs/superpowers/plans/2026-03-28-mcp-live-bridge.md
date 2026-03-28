@@ -757,7 +757,7 @@ describe('renderHeaders', () => {
       'X-Request-Id': { type: 'string' as const, location: 'header' as const, required: true },
     };
     const params = { 'X-Request-Id': '12345' };
-    const result = renderHeaders({}, {}, params, {}, {});
+    const result = renderHeaders({}, {}, params, {}, {}, paramDefs);
     expect(result['X-Request-Id']).toBe('12345');
   });
 });
@@ -813,15 +813,28 @@ export function renderHeaders(
   authContext: Record<string, any>,
   params: Record<string, any>,
   globalHeaders?: Record<string, string>,
-  authProviderHeaders?: Record<string, string>
+  authProviderHeaders?: Record<string, string>,
+  paramDefs?: Record<string, ParameterDef>
 ): Record<string, string> {
-  // Priority: auth headers (lowest) → global headers → tool headers (highest)
+  // Priority: auth headers (lowest) → global headers → tool headers → header-location params (highest)
   const merged = { ...(authProviderHeaders ?? {}), ...(globalHeaders ?? {}), ...toolHeaders };
   const result: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(merged)) {
     const template = Handlebars.compile(value, { noEscape: true });
     result[key] = template({ auth: authContext, params });
+  }
+
+  // Inject parameters with location: 'header' at highest priority
+  if (paramDefs) {
+    for (const [name, def] of Object.entries(paramDefs)) {
+      if (def.location === 'header') {
+        const value = params[name];
+        if (value !== undefined && value !== null) {
+          result[name] = String(value);
+        }
+      }
+    }
   }
 
   return result;
@@ -1994,7 +2007,7 @@ Expected: FAIL
 ```typescript
 // src/auth/manager.ts
 import type { AuthProvider } from './provider.js';
-import type { AuthDef } from '../config/types.js';
+import type { AuthDef, ValidationDef } from '../config/types.js';
 import type { Logger } from '../utils/logger.js';
 import { createLogger } from '../utils/logger.js';
 import { createHttpClient } from '../utils/http.js';
@@ -2072,7 +2085,7 @@ export class AuthLifecycleManager {
       const authHeaders = await this.provider.getAuthHeaders();
       const response = await this.httpClient.request({
         url: validation.check_url,
-        method: validation.check_method ?? 'GET',
+        method: validation.check_method ?? (validation.check_body ? 'POST' : 'GET'),
         headers: { ...(validation.check_headers ?? {}), ...authHeaders },
         body: validation.check_body,
       });
@@ -2107,7 +2120,7 @@ export class AuthLifecycleManager {
 
 function evaluateValidWhen(
   response: { status: number; body: string },
-  validWhen: AuthDef['validation'] extends { valid_when?: infer V } ? V : never
+  validWhen: ValidationDef['valid_when']
 ): boolean {
   if (!validWhen) return response.status >= 200 && response.status < 300;
 
@@ -2377,8 +2390,8 @@ export function createPipeline(
         const authHeaders = authManager ? await authManager.getAuthHeaders() : {};
         const authContext = authManager ? await authManager.getAuthContext() : {};
 
-        // Build headers: auth headers (lowest) → global headers → tool headers (highest)
-        const headers = renderHeaders(toolDef.headers, authContext, params, globalHeaders, authHeaders);
+        // Build headers: auth headers (lowest) → global headers → tool headers (highest) → header-location params
+        const headers = renderHeaders(toolDef.headers, authContext, params, globalHeaders, authHeaders, toolDef.parameters);
 
         // Build body
         const body = renderBody(toolDef.body, params);
@@ -2761,15 +2774,21 @@ program
       });
 
       // Graceful shutdown
+      let isShuttingDown = false;
       const shutdown = async () => {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
         logger.info('Shutting down...');
-        // Stop accepting new connections
-        httpServer.close(() => {
-          // Wait up to 10s for in-flight requests, then force exit
-          setTimeout(() => {
-            authManager.stop().finally(() => process.exit(0));
-          }, 10000);
-        });
+
+        // Stop accepting new connections, wait for in-flight to complete
+        httpServer.close();
+
+        // Force exit after 10s timeout
+        setTimeout(() => {
+          logger.warn('Graceful shutdown timeout, forcing exit');
+          process.exit(1);
+        }, 10000);
+
         await authManager.stop();
         process.exit(0);
       };
