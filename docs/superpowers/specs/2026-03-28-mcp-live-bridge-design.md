@@ -98,6 +98,33 @@ Global `headers` and tool-level `headers` are merged per request. Tool-level hea
 
 If a tool definition omits the `response` section entirely, the raw response body is returned as-is. If `response` is present but `extract` is omitted, the full parsed JSON response is passed to the template (or returned as-is if no template either).
 
+### Config Schema Summary
+
+| Key | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | yes | — | Bridge instance name |
+| `version` | string | no | "1.0" | Config format version |
+| `server.host` | string | no | "0.0.0.0" | Listen address |
+| `server.port` | number | no | 8080 | Listen port |
+| `server.cors_origin` | string | no | "*" | CORS allowed origin |
+| `auth.provider` | string | yes | — | "form", "oauth2", or file path |
+| `auth.config` | object | yes | — | Provider-specific config (passed to provider) |
+| `auth.validation` | object | no | — | Auth validity detection config |
+| `auth.refresh` | object | no | — | Refresh strategy config |
+| `headers` | object | no | {} | Global headers (static or `{{auth.*}}` templates) |
+| `tools` | array | yes | — | Tool definitions (at least one) |
+| `tools[].name` | string | yes | — | MCP tool name |
+| `tools[].description` | string | yes | — | MCP tool description |
+| `tools[].url` | string | yes | — | HTTP endpoint URL |
+| `tools[].method` | string | yes | — | HTTP method |
+| `tools[].headers` | object | no | {} | Per-tool headers |
+| `tools[].content_type` | string | no | "application/json" | Content-Type for request body |
+| `tools[].body` | string | no | — | Request body template |
+| `tools[].parameters` | object | no | {} | Parameter definitions |
+| `tools[].response.extract` | string | no | — | JSONPath expression |
+| `tools[].response.template` | string | no | — | Handlebars template |
+| `server.timeout` | number | no | 30000 | HTTP request timeout in milliseconds |
+
 ```yaml
 name: my-bridge
 version: "1.0"
@@ -130,7 +157,7 @@ auth:
 
   refresh:
     on_failure: true                   # Auto-refresh on 401 (default: true)
-    poll_interval: 300                 # Polling interval in seconds. Omit to disable polling
+    poll_interval: 300                 # Polling interval in seconds. Default: undefined (disabled)
     retry_count: 3                     # Retry count on refresh failure (default: 3)
     retry_delay: 5                     # Delay between retries in seconds (default: 5)
 
@@ -226,7 +253,7 @@ interface AuthProvider {
 ```
 Read auth.provider value
   → Built-in name (form/oauth2)? → Use built-in implementation
-  → File path? → Dynamic import() load (ESM .js or .ts compiled to ESM)
+  → File path? → Dynamic import() load (ESM .js or .mjs)
 → Import contract: module must have a default export that is an AuthProvider implementation
 → new Provider().init(auth.config)
 → Start validation loop (if poll_interval configured)
@@ -255,6 +282,8 @@ auth:
 ```
 
 Default login behavior sends `username` and `password` as form-encoded fields (`application/x-www-form-urlencoded`). If `login_body` is provided, it is rendered as a template and sent instead (with `Content-Type` from `login_headers` or `application/json`).
+
+Cookie handling: The form provider extracts **all** `Set-Cookie` headers from the login response and stores them. On subsequent requests, it injects the full `Cookie` header with all stored cookies. Cookie domain/path/expiry from `Set-Cookie` are not parsed — all cookies are sent to all requests. This keeps the implementation simple and works for single-backend-service scenarios.
 
 #### oauth2
 
@@ -295,6 +324,21 @@ export default class MyAuthProvider {
 
 ## Request Pipeline
 
+### Template Context Variables
+
+Templates in headers, body, and response sections have access to these variables:
+
+| Variable | Available In | Description |
+|---|---|---|
+| `{{params.*}}` | body, url | Tool call input parameters |
+| `{{auth.*}}` | headers, body | Auth provider context (provider-specific) |
+
+For the **form** provider, the auth context exposes all cookies as `{{auth.cookies.<name>}}` and the raw `Cookie` header string as `{{auth.cookie_header}}`.
+
+For the **oauth2** provider, the auth context exposes `{{auth.token}}` (access token) and `{{auth.token_type}}` (typically "Bearer").
+
+Custom providers can expose arbitrary variables via `getAuthContext()` method (optional extension to the base interface).
+
 ### Auth Lifecycle Concurrency
 
 The Auth Lifecycle Manager uses a mutex to serialize refresh operations. Only one refresh can be in progress at any time. If multiple concurrent tool calls encounter 401, or the poll loop detects expiry simultaneously, only the first caller triggers a refresh; other callers wait for the in-progress refresh to complete and then use its result. This prevents redundant login requests and race conditions.
@@ -305,6 +349,7 @@ The Auth Lifecycle Manager uses a mutex to serialize refresh operations. Only on
 - **CORS**: `Access-Control-Allow-Origin: *` header on all responses by default. Configurable via `server.cors_origin` in config.
 - **Connection lifecycle**: Follows MCP SSE protocol. Server sends heartbeats. Client auto-reconnects on disconnect.
 - **Graceful shutdown**: On SIGINT/SIGTERM, stop accepting new connections, wait for in-flight requests to complete (up to 10s timeout), then call `authProvider.dispose()` and exit.
+- **Heartbeat**: SSE heartbeat comment sent every 15 seconds to keep connections alive.
 
 ### Flow
 
@@ -313,19 +358,20 @@ The Auth Lifecycle Manager uses a mutex to serialize refresh operations. Only on
 3. Template Engine: render parameters into URL path, query string, body template, header template
 4. HTTP Client: execute the HTTP request
    - 200 OK → proceed to step 5
-   - 401/403 → trigger auth refresh → retry (up to retry_count times)
+   - 401 → trigger auth refresh → retry (up to retry_count times)
 5. Response Transformer: JSONPath extraction → template formatting → return result to LLM
 
 ### Error Handling
 
 | Scenario | Behavior |
 |---|---|
-| Auth failure (401/403) | Auto refresh → retry, return error after exceeding retry count |
+| Auth failure (401) | Auto refresh → retry, return error after exceeding retry count |
 | Network timeout | Return error with timeout info, do not trigger auth refresh |
-| HTTP 4xx (non-auth) | Return error directly to LLM |
+| HTTP 4xx (non-auth, including 403) | Return error directly to LLM |
 | HTTP 5xx | Return error directly to LLM |
 | JSONPath extraction fails | Return raw response body + warning log |
 | Template rendering fails | Return JSONPath extraction result + warning log |
+| Non-JSON response body | Return raw body as string + warning log, skip JSONPath/template |
 
 ## CLI Interface
 
@@ -350,6 +396,14 @@ mcp-live-bridge validate -c config.yaml
 # List all tools defined in config
 mcp-live-bridge list -c config.yaml
 ```
+
+### Exit Codes
+
+| Command | Exit 0 | Exit 1 |
+|---|---|---|
+| `start` | Server stopped normally | Config error, startup failure |
+| `validate` | Config is valid | Config validation error (details on stderr) |
+| `list` | Tools listed successfully | Config error |
 
 ### Log Levels
 
