@@ -88,7 +88,15 @@ mcp-live-bridge/
 
 ## Configuration File Format
 
-A single config file maps to one backend service. Supports JSON, YAML, and TOML formats.
+A single config file maps to one backend service. One instance of `mcp-live-bridge start` handles exactly one config file. To run multiple services, run multiple instances. Supports JSON, YAML, and TOML formats.
+
+### Header Merge Strategy
+
+Global `headers` and tool-level `headers` are merged per request. Tool-level headers override global headers with the same key. Auth provider headers (from `getAuthHeaders()`) have the lowest priority — both global and tool-level headers can override them.
+
+### Response Default Behavior
+
+If a tool definition omits the `response` section entirely, the raw response body is returned as-is. If `response` is present but `extract` is omitted, the full parsed JSON response is passed to the template (or returned as-is if no template either).
 
 ```yaml
 name: my-bridge
@@ -154,10 +162,22 @@ tools:
         - {{title}} ({{url}})
         {{/each}}
 
+  - name: get_document
+    description: "Get a document by ID"
+    url: https://example.com/api/documents/{{params.id}}    # path parameter
+    method: GET
+    parameters:
+      id:
+        type: string
+        required: true
+        location: path                                    # replaced in URL
+    # No response section → raw response body returned as-is
+
   - name: create_document
     description: "Create a new document"
     url: https://example.com/api/documents
     method: POST
+    content_type: application/json                         # default: application/json
     body: |
       {
         "title": "{{params.title}}",
@@ -206,21 +226,85 @@ interface AuthProvider {
 ```
 Read auth.provider value
   → Built-in name (form/oauth2)? → Use built-in implementation
-  → File path? → Dynamic import() load
+  → File path? → Dynamic import() load (ESM .js or .ts compiled to ESM)
+→ Import contract: module must have a default export that is an AuthProvider implementation
 → new Provider().init(auth.config)
 → Start validation loop (if poll_interval configured)
 ```
 
+Custom provider files must be ESM format (`.js` or `.mjs`). The file's default export must be a class implementing the `AuthProvider` interface. If the default export does not implement all required methods, the tool fails at startup with a clear error message listing the missing methods.
+
 ### Built-in Providers
 
-- **form**: POST to login URL with credentials, store cookie, inject into requests. Uses validation.check_url to detect expiry.
-- **oauth2**: Execute OAuth2 flow to get access_token, return `Authorization: Bearer xxx` header.
+#### form
+
+POST credentials to a login URL, extract cookies from the response, and inject them into subsequent requests.
+
+```yaml
+auth:
+  provider: form
+  config:
+    login_url: https://example.com/login    # POST target
+    login_method: POST                      # default: POST
+    username: myuser                        # form field: username
+    password: mypass                        # form field: password
+    login_headers:                          # optional headers for login request
+      Content-Type: application/json
+    login_body: |                           # optional custom body template
+      {"user":"{{username}}","pass":"{{password}}"}
+```
+
+Default login behavior sends `username` and `password` as form-encoded fields (`application/x-www-form-urlencoded`). If `login_body` is provided, it is rendered as a template and sent instead (with `Content-Type` from `login_headers` or `application/json`).
+
+#### oauth2
+
+Supports **authorization code** and **client credentials** grant types. Automatically refreshes the access token using the refresh token when available.
+
+```yaml
+auth:
+  provider: oauth2
+  config:
+    grant_type: client_credentials          # authorization_code | client_credentials
+    token_url: https://example.com/oauth/token
+    client_id: my-client-id
+    client_secret: my-client-secret
+    scope: "read write"                     # optional
+    # For authorization_code grant:
+    # authorization_url: https://example.com/oauth/authorize
+    # redirect_uri: http://localhost:8080/callback
+    # code: manually-obtained-authorization-code
+```
+
+Returns `Authorization: Bearer <access_token>` header. When a refresh token is available (from the token response), it is used for subsequent refreshes instead of re-running the full grant flow.
 
 ### Custom Providers
 
-Users write a JS/TS file exporting a class that implements the `AuthProvider` interface. Loaded dynamically at startup via `import()`, no registration or installation required.
+Users write a JS file (ESM format) with a default export implementing the `AuthProvider` interface. Loaded dynamically at startup via `import()`, no registration or installation required.
+
+Example custom provider file (`./providers/my-auth.js`):
+
+```javascript
+export default class MyAuthProvider {
+  async init(config) { /* ... */ }
+  async getAuthHeaders() { /* ... */ return { "X-Token": "..." }; }
+  async isValid() { /* ... */ return true; }
+  async refresh() { /* ... */ }
+  async dispose() { /* ... */ }
+}
+```
 
 ## Request Pipeline
+
+### Auth Lifecycle Concurrency
+
+The Auth Lifecycle Manager uses a mutex to serialize refresh operations. Only one refresh can be in progress at any time. If multiple concurrent tool calls encounter 401, or the poll loop detects expiry simultaneously, only the first caller triggers a refresh; other callers wait for the in-progress refresh to complete and then use its result. This prevents redundant login requests and race conditions.
+
+### SSE Server Behavior
+
+- **Startup**: Auth initialization completes before the server starts accepting connections. The MCP client will not attempt tool calls before auth is ready.
+- **CORS**: `Access-Control-Allow-Origin: *` header on all responses by default. Configurable via `server.cors_origin` in config.
+- **Connection lifecycle**: Follows MCP SSE protocol. Server sends heartbeats. Client auto-reconnects on disconnect.
+- **Graceful shutdown**: On SIGINT/SIGTERM, stop accepting new connections, wait for in-flight requests to complete (up to 10s timeout), then call `authProvider.dispose()` and exit.
 
 ### Flow
 
@@ -244,6 +328,8 @@ Users write a JS/TS file exporting a class that implements the `AuthProvider` in
 | Template rendering fails | Return JSONPath extraction result + warning log |
 
 ## CLI Interface
+
+CLI flags override config file values. Specifically, `--port` overrides `server.port`.
 
 ```bash
 # Start MCP server
