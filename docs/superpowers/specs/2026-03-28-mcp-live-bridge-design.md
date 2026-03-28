@@ -245,6 +245,9 @@ interface AuthProvider {
 
   /** Cleanup resources on shutdown */
   dispose(): Promise<void>;
+
+  /** Optional: expose custom variables for template context */
+  getAuthContext?(): Promise<Record<string, any>>;
 }
 ```
 
@@ -353,6 +356,8 @@ The Auth Lifecycle Manager uses a mutex to serialize refresh operations. Only on
 
 ### Flow
 
+When `poll_interval` is not configured (reactive-only mode), the first request after token expiry will fail with 401, trigger a refresh, and automatically retry. The LLM caller experiences a slightly higher latency on that first request but no functional impact.
+
 1. SSE Server receives JSON-RPC tool call request
 2. Auth Middleware: call `authProvider.getAuthHeaders()`, merge into request headers
 3. Template Engine: render parameters into URL path, query string, body template, header template
@@ -367,7 +372,7 @@ The Auth Lifecycle Manager uses a mutex to serialize refresh operations. Only on
 |---|---|
 | Auth failure (401) | Auto refresh → retry, return error after exceeding retry count |
 | Network timeout | Return error with timeout info, do not trigger auth refresh |
-| HTTP 4xx (non-auth, including 403) | Return error directly to LLM |
+| HTTP 4xx (non-auth, including 403) | Return error directly to LLM. Note: 403 is intentionally not treated as auth failure |
 | HTTP 5xx | Return error directly to LLM |
 | JSONPath extraction fails | Return raw response body + warning log |
 | Template rendering fails | Return JSONPath extraction result + warning log |
