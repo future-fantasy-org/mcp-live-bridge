@@ -6,7 +6,9 @@ import { AuthLifecycleManager } from './auth/manager.js';
 import { ToolRegistry, paramDefToZodSchema } from './tool/registry.js';
 import { createPipeline } from './tool/pipeline.js';
 import { createMcpServer } from './server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 
 const program = new Command();
 program
@@ -81,15 +83,42 @@ program
         });
       }
 
-      // HTTP server with SSE transport — Task 16 will fill this in
+      // Create Streamable HTTP transport and connect to MCP server
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+      });
+
+      transport.onclose = () => {
+        logger.info('MCP transport connection closed');
+      };
+      transport.onerror = (error: Error) => {
+        logger.error(`MCP transport error: ${error.message}`);
+      };
+
+      await mcpServer.connect(transport);
+      logger.info('MCP server connected to Streamable HTTP transport');
+
       const httpServer = createServer(async (req, res) => {
+        // Handle CORS preflight
         res.setHeader('Access-Control-Allow-Origin', corsOrigin);
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, MCP-Session-Id');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
-        if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
-        // Placeholder — Task 16 will add transport handling
-        res.writeHead(404);
-        res.end('Not found');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-Id');
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
+        try {
+          await transport.handleRequest(req, res);
+        } catch (err: any) {
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+          }
+          res.end(JSON.stringify({ error: err.message }));
+          logger.error(`HTTP request error: ${err.message}`);
+        }
       });
 
       let isShuttingDown = false;
@@ -97,6 +126,7 @@ program
         if (isShuttingDown) return;
         isShuttingDown = true;
         logger.info('Shutting down...');
+        await transport.close();
         httpServer.close();
         setTimeout(() => {
           logger.warn('Graceful shutdown timeout, forcing exit');

@@ -1,0 +1,12 @@
+name: test-bridge
+auth:
+  provider: form
+  config:
+    login_url: https://httpbin.org/post
+    username: test
+    password: test
+tools:
+  - name: get_ip
+    description: "Get public IP address"
+    url: https://httpbin.org/ip
+    method: GET
