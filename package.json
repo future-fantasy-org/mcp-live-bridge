@@ -1,5 +1,5 @@
 {
-  "name": "mcp-live-bridge",
+  "name": "@future-fantasy/mcp-live-bridge",
   "version": "0.1.0",
   "description": "Config-driven CLI that exposes external HTTP APIs as MCP tools",
   "type": "module",
