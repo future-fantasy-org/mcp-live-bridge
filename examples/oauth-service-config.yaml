@@ -1,0 +1,62 @@
+name: oauth-auth-bridge
+version: "1.0"
+
+# OAuth2 认证示例：使用内置 oauth2 provider
+# 支持 client_credentials 和 authorization_code 两种授权模式
+# 本示例使用 client_credentials 模式（适合服务间调用）
+
+server:
+  host: 0.0.0.0
+  port: 8092
+
+auth:
+  provider: oauth2
+  config:
+    # Token 端点
+    token_url: http://localhost:8666/oauth/token
+    client_id: your-client-id
+    client_secret: your-client-secret
+    grant_type: client_credentials
+    scope: read write
+
+    # --- authorization_code 模式需要额外配置 ---
+    # grant_type: authorization_code
+    # authorization_url: http://localhost:8666/oauth/authorize
+    # redirect_uri: http://localhost:8092/callback
+    # code: pre-authorized-code
+
+  validation:
+    check_url: http://localhost:8666/api/auth/me
+    check_method: GET
+    valid_when:
+      status: 200
+
+  refresh:
+    on_failure: true
+    retry_count: 3
+    retry_delay: 5
+
+headers:
+  Content-Type: application/json
+
+tools:
+  - name: get_current_user
+    description: "Get the currently authenticated user's profile"
+    url: http://localhost:8666/api/auth/me
+    method: GET
+
+  - name: list_resources
+    description: "List all available resources"
+    url: http://localhost:8666/api/resources
+    method: GET
+    parameters:
+      limit:
+        type: integer
+        required: false
+        description: "Maximum number of resources to return"
+        location: query
+      offset:
+        type: integer
+        required: false
+        description: "Number of resources to skip"
+        location: query

@@ -178,4 +178,63 @@ program
     }
   });
 
+program
+  .command('init')
+  .description('Interactive config file generator')
+  .option('-o, --output <path>', 'Output file path', 'bridge-config.yaml')
+  .action(async (options) => {
+    try {
+      const { runInit } = await import('./cli/init.js');
+      await runInit(options.output);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('import')
+  .description('Generate bridge config from an OpenAPI/Swagger spec')
+  .option('-u, --url <url>', 'URL to OpenAPI spec')
+  .option('-f, --file <path>', 'Local OpenAPI spec file path')
+  .option('-n, --name <name>', 'Bridge name', 'mcp-bridge')
+  .option('-p, --port <number>', 'Server port')
+  .option('-o, --output <path>', 'Output file path', 'bridge-config.yaml')
+  .action(async (options) => {
+    try {
+      if (!options.url && !options.file) {
+        console.error('Error: Provide either --url or --file');
+        process.exit(1);
+      }
+
+      const importOpts = {
+        name: options.name,
+        port: options.port ? parseInt(options.port, 10) : undefined,
+      };
+
+      let result: Awaited<ReturnType<typeof import('./openapi/import.js').importFromUrl>>;
+      if (options.url) {
+        const { importFromUrl } = await import('./openapi/import.js');
+        result = await importFromUrl(options.url, importOpts);
+      } else {
+        const { importFromFile } = await import('./openapi/import.js');
+        result = importFromFile(options.file, importOpts);
+      }
+
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(options.output, result.config, 'utf-8');
+
+      console.log(`Generated config: ${options.output}`);
+      console.log(`  Endpoints: ${result.endpoints.length}`);
+      if (result.auth) {
+        console.log(`  Auth detected: ${result.auth.type} (${result.auth.schemeName})`);
+      }
+      console.log(`\nReview and edit ${options.output} to add your credentials, then run:`);
+      console.log(`  mcp-live-bridge start -c ${options.output}`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
 program.parse();

@@ -8,12 +8,12 @@ server:
 auth:
   provider: ./examples/jwt-auth-provider.mjs
   config:
-    token_url: http://localhost:8000/api/auth/login
-    username: testuser
-    password: testpass123
+    token_url: http://localhost:8666/api/auth/login
+    username: test
+    password: 123456
 
   validation:
-    check_url: http://localhost:8000/api/auth/me
+    check_url: http://localhost:8666/api/auth/me
     check_method: GET
     valid_when:
       status: 200
@@ -29,7 +29,7 @@ headers:
 tools:
   - name: register_user
     description: "Register a new user account"
-    url: http://localhost:8000/api/auth/register
+    url: http://localhost:8666/api/auth/register
     method: POST
     body: '{"username": "{{params.username}}", "email": "{{params.email}}", "password": "{{params.password}}"}'
     parameters:
@@ -51,12 +51,12 @@ tools:
 
   - name: get_current_user
     description: "Get the currently authenticated user's profile"
-    url: http://localhost:8000/api/auth/me
+    url: http://localhost:8666/api/auth/me
     method: GET
 
   - name: get_user_by_username
     description: "Get a user's profile by their username"
-    url: http://localhost:8000/api/auth/users/{{params.username}}
+    url: http://localhost:8666/api/auth/users/{{params.username}}
     method: GET
     parameters:
       username:

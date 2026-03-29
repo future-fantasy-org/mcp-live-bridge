@@ -1,0 +1,50 @@
+name: cookie-auth-bridge
+version: "1.0"
+
+# Cookie 认证示例：使用自定义 cookie-auth-provider
+# 支持两步登录（GET 提取 CSRF token → POST 登录获取 session cookie）
+# 适用于 Django、Laravel、Spring Security 等 CSRF 保护的 Web 应用
+
+server:
+  host: 0.0.0.0
+  port: 8091
+
+auth:
+  provider: ./examples/cookie-auth-provider.mjs
+  config:
+    login_url: http://localhost:8666/api/auth/login
+    username: test
+    password: 123456
+    # 如果不需要 CSRF，可以省略 csrf_token，provider 会尝试从页面自动提取
+    # csrf_token: your-csrf-token
+
+  validation:
+    check_url: http://localhost:8666/api/auth/me
+    check_method: GET
+    valid_when:
+      status: 200
+
+  refresh:
+    on_failure: true
+    retry_count: 3
+    retry_delay: 2
+
+headers:
+  Content-Type: application/json
+
+tools:
+  - name: get_current_user
+    description: "Get the currently authenticated user's profile"
+    url: http://localhost:8666/api/auth/me
+    method: GET
+
+  - name: get_user_by_username
+    description: "Get a user's profile by their username"
+    url: http://localhost:8666/api/auth/users/{{params.username}}
+    method: GET
+    parameters:
+      username:
+        type: string
+        required: true
+        description: "The username to look up"
+        location: path

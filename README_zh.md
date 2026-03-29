@@ -106,6 +106,18 @@ mcp-live-bridge validate -c <配置文件>
 
 # 列出配置中定义的所有工具
 mcp-live-bridge list -c <配置文件>
+
+# 交互式配置生成向导
+mcp-live-bridge init
+
+# 指定输出文件
+mcp-live-bridge init -o my-config.yaml
+
+# 从 OpenAPI spec 导入
+mcp-live-bridge import -u https://api.example.com/openapi.json -n my-bridge
+
+# 从本地文件导入
+mcp-live-bridge import -f ./openapi.yaml -n my-bridge -o config.yaml
 ```
 
 ## 配置参考
@@ -268,8 +280,9 @@ auth:
 
 查看 [`examples/`](examples/) 目录获取完整的工作示例：
 
-- [`jwt-service-config.yaml`](examples/jwt-service-config.yaml) — JWT 认证的 REST API 桥接
-- [`jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) — 自定义 JWT 认证提供者
+- [`jwt-service-config.yaml`](examples/jwt-service-config.yaml) + [`jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) — JWT Token 认证（自定义 provider）
+- [`cookie-service-config.yaml`](examples/cookie-service-config.yaml) + [`cookie-auth-provider.mjs`](examples/cookie-auth-provider.mjs) — Cookie/Session 认证，支持 CSRF（自定义 provider）
+- [`oauth-service-config.yaml`](examples/oauth-service-config.yaml) — OAuth2 client_credentials 认证（内置 provider）
 
 ## 架构
 

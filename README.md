@@ -104,6 +104,18 @@ mcp-live-bridge validate -c <config-file>
 
 # List all tools defined in config
 mcp-live-bridge list -c <config-file>
+
+# Interactive config generation wizard
+mcp-live-bridge init
+
+# Specify output file
+mcp-live-bridge init -o my-config.yaml
+
+# Import from OpenAPI spec
+mcp-live-bridge import -u https://api.example.com/openapi.json -n my-bridge
+
+# Import from local file
+mcp-live-bridge import -f ./openapi.yaml -n my-bridge -o config.yaml
 ```
 
 ## Configuration Reference
@@ -266,8 +278,9 @@ auth:
 
 See the [`examples/`](examples/) directory for complete working examples:
 
-- [`jwt-service-config.yaml`](examples/jwt-service-config.yaml) — JWT-authenticated REST API bridge
-- [`jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) — Custom JWT auth provider
+- [`jwt-service-config.yaml`](examples/jwt-service-config.yaml) + [`jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) — JWT token auth (custom provider)
+- [`cookie-service-config.yaml`](examples/cookie-service-config.yaml) + [`cookie-auth-provider.mjs`](examples/cookie-auth-provider.mjs) — Cookie/session auth with CSRF support (custom provider)
+- [`oauth-service-config.yaml`](examples/oauth-service-config.yaml) — OAuth2 client_credentials auth (built-in provider)
 
 ## Architecture
 
