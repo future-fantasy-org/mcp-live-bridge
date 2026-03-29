@@ -35,7 +35,7 @@ jobs:
           git config user.name "cong"
           git config user.email "heian0224@gmail.com"
 
-      - run: npm version patch -m "chore(release): %s"
+      - run: npm version patch  
 
       - run: npm run build --if-present
 
