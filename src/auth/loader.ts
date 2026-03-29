@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import path from 'node:path';
 import type { AuthProvider } from './provider.js';
 import { FormAuthProvider } from './form.js';
 import { OAuth2AuthProvider } from './oauth2.js';
@@ -25,7 +27,8 @@ export async function loadAuthProviderAsync(providerNameOrPath: string): Promise
   if (!existsSync(providerNameOrPath)) {
     throw new Error(`Auth provider file not found: ${providerNameOrPath}`);
   }
-  const mod = await import(providerNameOrPath);
+  const absolutePath = path.resolve(providerNameOrPath);
+  const mod = await import(pathToFileURL(absolutePath).href);
   const ProviderClass = mod.default;
   if (typeof ProviderClass !== 'function' || !ProviderClass.prototype) {
     throw new Error(`Auth provider file ${providerNameOrPath} must have a default export that is a class`);

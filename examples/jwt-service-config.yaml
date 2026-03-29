@@ -1,0 +1,66 @@
+name: jwt-auth-bridge
+version: "1.0"
+
+server:
+  host: 0.0.0.0
+  port: 8090
+
+auth:
+  provider: ./examples/jwt-auth-provider.mjs
+  config:
+    token_url: http://localhost:8000/api/auth/login
+    username: testuser
+    password: testpass123
+
+  validation:
+    check_url: http://localhost:8000/api/auth/me
+    check_method: GET
+    valid_when:
+      status: 200
+
+  refresh:
+    on_failure: true
+    retry_count: 3
+    retry_delay: 2
+
+headers:
+  Content-Type: application/json
+
+tools:
+  - name: register_user
+    description: "Register a new user account"
+    url: http://localhost:8000/api/auth/register
+    method: POST
+    body: '{"username": "{{params.username}}", "email": "{{params.email}}", "password": "{{params.password}}"}'
+    parameters:
+      username:
+        type: string
+        required: true
+        description: "The username for the new account"
+        location: body
+      email:
+        type: string
+        required: true
+        description: "The email for the new account"
+        location: body
+      password:
+        type: string
+        required: true
+        description: "The password for the new account (min 6 chars)"
+        location: body
+
+  - name: get_current_user
+    description: "Get the currently authenticated user's profile"
+    url: http://localhost:8000/api/auth/me
+    method: GET
+
+  - name: get_user_by_username
+    description: "Get a user's profile by their username"
+    url: http://localhost:8000/api/auth/users/{{params.username}}
+    method: GET
+    parameters:
+      username:
+        type: string
+        required: true
+        description: "The username to look up"
+        location: path

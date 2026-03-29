@@ -10,7 +10,7 @@ const TYPE_MAP: Record<string, () => z.ZodTypeAny> = {
   object: () => z.record(z.string(), z.any()),
 };
 
-export function paramDefToZodSchema(paramDefs: Record<string, ParameterDef>): z.ZodObject<any> {
+export function paramDefToZodSchema(paramDefs: Record<string, ParameterDef>): Record<string, z.ZodTypeAny> {
   const shape: Record<string, z.ZodTypeAny> = {};
 
   for (const [name, def] of Object.entries(paramDefs)) {
@@ -31,7 +31,7 @@ export function paramDefToZodSchema(paramDefs: Record<string, ParameterDef>): z.
     shape[name] = field;
   }
 
-  return z.object(shape);
+  return shape;
 }
 
 export class ToolRegistry {
