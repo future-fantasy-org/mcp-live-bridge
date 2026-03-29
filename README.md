@@ -317,7 +317,7 @@ node dist/index.js list -c examples/jwt-service-config.yaml
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 20
 
 ## License
 

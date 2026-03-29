@@ -319,7 +319,7 @@ node dist/index.js list -c examples/jwt-service-config.yaml
 
 ## 环境要求
 
-- Node.js >= 18
+- Node.js >= 20
 
 ## 许可证
 
