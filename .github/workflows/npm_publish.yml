@@ -2,8 +2,8 @@ name: Publish npm Package
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   id-token: write  # Required for OIDC
