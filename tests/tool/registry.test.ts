@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { paramDefToZodSchema, ToolRegistry } from '../../src/tool/registry.js';
 import type { ToolDef, ParameterDef } from '../../src/config/types.js';
 
 describe('paramDefToZodSchema', () => {
-  it('creates schema for string param', () => {
+  it('creates raw shape for string param', () => {
     const paramDefs: Record<string, ParameterDef> = {
       name: { type: 'string', location: 'query', required: true, description: 'The name' },
     };
-    const schema = paramDefToZodSchema(paramDefs);
-    const result = schema.safeParse({ name: 'test' });
-    expect(result.success).toBe(true);
-    expect(result.data.name).toBe('test');
+    const shape = paramDefToZodSchema(paramDefs);
+    expect(shape).toHaveProperty('name');
+    // Verify it's a Zod schema that can be used with z.object
+    const schema = z.object(shape);
+    expect(schema.parse({ name: 'test' }).name).toBe('test');
   });
 
   it('marks params as optional when not required and no default', () => {
@@ -18,21 +20,22 @@ describe('paramDefToZodSchema', () => {
       keyword: { type: 'string', location: 'query', required: true },
       limit: { type: 'integer', location: 'query' },
     };
-    const schema = paramDefToZodSchema(paramDefs);
-    const result = schema.safeParse({ keyword: 'test' });
-    expect(result.success).toBe(true);
-    expect(result.data.keyword).toBe('test');
-    expect(result.data.limit).toBeUndefined();
+    const shape = paramDefToZodSchema(paramDefs);
+    const schema = z.object(shape);
+    const result = schema.parse({ keyword: 'test' });
+    expect(result.keyword).toBe('test');
+    expect(result.limit).toBeUndefined();
   });
 
   it('validates enum values', () => {
     const paramDefs: Record<string, ParameterDef> = {
       status: { type: 'string', location: 'query', required: true, enum: ['active', 'inactive'] },
     };
-    const schema = paramDefToZodSchema(paramDefs);
-    expect(schema.safeParse({ status: 'active' }).success).toBe(true);
-    expect(schema.safeParse({ status: 'inactive' }).success).toBe(true);
-    expect(schema.safeParse({ status: 'unknown' }).success).toBe(false);
+    const shape = paramDefToZodSchema(paramDefs);
+    const schema = z.object(shape);
+    expect(() => schema.parse({ status: 'active' })).not.toThrow();
+    expect(() => schema.parse({ status: 'inactive' })).not.toThrow();
+    expect(() => schema.parse({ status: 'unknown' })).toThrow();
   });
 
   it('supports various types', () => {
@@ -41,26 +44,30 @@ describe('paramDefToZodSchema', () => {
       rate: { type: 'number', location: 'query', required: true },
       active: { type: 'boolean', location: 'query', required: true },
     };
-    const schema = paramDefToZodSchema(paramDefs);
-    const result = schema.safeParse({ count: 10, rate: 3.14, active: true });
-    expect(result.success).toBe(true);
+    const shape = paramDefToZodSchema(paramDefs);
+    const schema = z.object(shape);
+    expect(() => schema.parse({ count: 10, rate: 3.14, active: true })).not.toThrow();
   });
 
   it('includes description metadata', () => {
     const paramDefs: Record<string, ParameterDef> = {
       query: { type: 'string', location: 'query', required: true, description: 'Search query' },
     };
-    const schema = paramDefToZodSchema(paramDefs);
-    expect(schema.shape.query.description).toBe('Search query');
+    const shape = paramDefToZodSchema(paramDefs);
+    expect(shape.query).toBeDefined();
+    // Description is embedded in the Zod schema, verify via toJSONSchema
+    const jsonSchema = shape.query.toJSONSchema?.();
+    expect(jsonSchema?.description).toBe('Search query');
   });
 
   it('requires fields that are marked required', () => {
     const paramDefs: Record<string, ParameterDef> = {
       id: { type: 'string', location: 'path', required: true },
     };
-    const schema = paramDefToZodSchema(paramDefs);
-    expect(schema.safeParse({}).success).toBe(false);
-    expect(schema.safeParse({ id: '123' }).success).toBe(true);
+    const shape = paramDefToZodSchema(paramDefs);
+    const schema = z.object(shape);
+    expect(() => schema.parse({})).toThrow();
+    expect(() => schema.parse({ id: '123' })).not.toThrow();
   });
 });
 
