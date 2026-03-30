@@ -42,7 +42,7 @@ export function createPipeline(
         const authHeaders = authManager ? await authManager.getAuthHeaders() : {};
         const authContext = authManager ? await authManager.getAuthContext() : {};
         const headers = renderHeaders(toolDef.headers, authContext, params, globalHeaders, authHeaders, toolDef.parameters);
-        const body = renderBody(toolDef.body, params);
+        const body = renderBody(toolDef.body, params, toolDef.content_type);
 
         const requestHeaders: Record<string, string> = {
           ...(body ? { 'Content-Type': toolDef.content_type ?? 'application/json' } : {}),

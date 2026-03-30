@@ -152,7 +152,7 @@ tools:                              # Required: Array of tool definitions
     url: https://api.example.com    # Required: Full endpoint URL
     method: GET                     # Required: HTTP method
     headers: {}                     # Optional: Tool-level headers (merged with global)
-    body: ""                        # Optional: Request body template
+    body: ""                        # Optional: Request body template (string or object)
     content_type: ""                # Optional: Content-Type override
     parameters: {}                  # Optional: Parameter definitions
     response: {}                    # Optional: Response transformation
@@ -172,6 +172,51 @@ Each parameter supports these fields:
 | `enum`      | string[] | No       | Allowed values                   |
 
 Parameters are injected into templates via `{{params.<name>}}`.
+
+### Request Body
+
+The `body` field supports two formats:
+
+**String template** (original, still supported):
+
+```yaml
+body: '{"username": "{{params.username}}", "email": "{{params.email}}"}'
+```
+
+**Object definition** (recommended):
+
+```yaml
+body:
+  username: "{{params.username}}"
+  email: "{{params.email}}"
+  role: admin          # Static values are preserved as-is
+  count: "{{params.n}}" # Rendered as string
+```
+
+The object is serialized based on `content_type`:
+
+| content_type | Serialization |
+|---|---|
+| `application/json` (default) | `JSON.stringify` |
+| `application/x-www-form-urlencoded` | `key=value&key2=value2` |
+
+URL-encoded example:
+
+```yaml
+content_type: application/x-www-form-urlencoded
+body:
+  username: "{{params.username}}"
+  password: "{{params.password}}"
+```
+
+Nested objects are supported for JSON and automatically flattened for URL-encoded:
+
+```yaml
+body:
+  user:
+    name: "{{params.name}}"
+    email: "{{params.email}}"
+```
 
 ### Response Transformation
 

@@ -13,12 +13,52 @@ describe('renderUrl', () => {
 });
 
 describe('renderBody', () => {
-  it('renders body template with params', () => {
+  it('renders body template with params (string)', () => {
     const result = renderBody('{"title":"{{params.title}}","content":"{{params.content}}"}', { title: 'Hello', content: 'World' });
     expect(result).toBe('{"title":"Hello","content":"World"}');
   });
   it('returns undefined when no body template', () => {
     expect(renderBody(undefined, {})).toBeUndefined();
+  });
+  it('renders object body as JSON by default', () => {
+    const result = renderBody({ username: '{{params.name}}', role: 'admin' }, { name: 'test' });
+    expect(result).toBe('{"username":"test","role":"admin"}');
+  });
+  it('renders object body with explicit application/json content type', () => {
+    const result = renderBody({ username: '{{params.name}}' }, { name: 'test' }, 'application/json');
+    expect(result).toBe('{"username":"test"}');
+  });
+  it('renders object body as URL-encoded', () => {
+    const result = renderBody({ username: '{{params.name}}', password: '{{params.pass}}' }, { name: 'test', pass: '123' }, 'application/x-www-form-urlencoded');
+    expect(result).toBe('username=test&password=123');
+  });
+  it('renders nested object body', () => {
+    const result = renderBody({
+      user: { name: '{{params.name}}', email: '{{params.email}}' },
+      active: true,
+    }, { name: 'alice', email: 'alice@example.com' });
+    const parsed = JSON.parse(result!);
+    expect(parsed.user.name).toBe('alice');
+    expect(parsed.user.email).toBe('alice@example.com');
+    expect(parsed.active).toBe(true);
+  });
+  it('preserves non-string values in object body', () => {
+    const result = renderBody({ count: 10, active: true, tags: ['a', 'b'] }, {});
+    const parsed = JSON.parse(result!);
+    expect(parsed.count).toBe(10);
+    expect(parsed.active).toBe(true);
+    expect(parsed.tags).toEqual(['a', 'b']);
+  });
+  it('flattens nested object for URL-encoded', () => {
+    const result = renderBody({
+      user: { name: '{{params.name}}', email: 'a@b.com' },
+    }, { name: 'test' }, 'application/x-www-form-urlencoded');
+    expect(result).toBe('user%5Bname%5D=test&user%5Bemail%5D=a%40b.com');
+  });
+  it('renders array values in object body', () => {
+    const result = renderBody({ tags: ['{{params.tag1}}', '{{params.tag2}}'] }, { tag1: 'go', tag2: 'ts' });
+    const parsed = JSON.parse(result!);
+    expect(parsed.tags).toEqual(['go', 'ts']);
   });
 });
 

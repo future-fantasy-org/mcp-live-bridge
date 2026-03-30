@@ -107,6 +107,44 @@ describe('Pipeline', () => {
     expect(parsed.method).toBe('POST');
   });
 
+  it('renders object body as JSON', async () => {
+    const toolDef: ToolDef = {
+      name: 'create-user-obj',
+      description: 'Create user with object body',
+      url: `http://127.0.0.1:${port}/users`,
+      method: 'POST',
+      body: { username: '{{params.username}}', email: '{{params.email}}', role: 'admin' },
+    };
+
+    const pipeline = createPipeline(toolDef, {}, 5000);
+    const result = await pipeline.execute({ username: 'alice', email: 'alice@example.com' });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.headers['content-type']).toBe('application/json');
+    const sentBody = JSON.parse(parsed.body);
+    expect(sentBody.username).toBe('alice');
+    expect(sentBody.email).toBe('alice@example.com');
+    expect(sentBody.role).toBe('admin');
+  });
+
+  it('renders object body as URL-encoded', async () => {
+    const toolDef: ToolDef = {
+      name: 'login-form',
+      description: 'Login with form body',
+      url: `http://127.0.0.1:${port}/login`,
+      method: 'POST',
+      body: { username: '{{params.username}}', password: '{{params.password}}' },
+      content_type: 'application/x-www-form-urlencoded',
+    };
+
+    const pipeline = createPipeline(toolDef, {}, 5000);
+    const result = await pipeline.execute({ username: 'bob', password: 'secret' });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.headers['content-type']).toBe('application/x-www-form-urlencoded');
+    expect(parsed.body).toBe('username=bob&password=secret');
+  });
+
   it('transforms response with extract', async () => {
     const toolDef: ToolDef = {
       name: 'search',

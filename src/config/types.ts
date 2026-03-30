@@ -19,7 +19,7 @@ export interface ToolDef {
   method: string;
   headers?: Record<string, string>;
   content_type?: string;
-  body?: string;
+  body?: string | Record<string, unknown>;
   parameters?: Record<string, ParameterDef>;
   response?: ResponseDef;
 }

@@ -69,4 +69,34 @@ describe('parseAndValidateConfig', () => {
     expect(result.auth.refresh!.retry_delay).toBe(5);
     expect(result.auth.refresh!.poll_interval).toBeUndefined();
   });
+
+  it('accepts string body', () => {
+    const config = {
+      ...validConfig,
+      tools: [{
+        name: 'create',
+        description: 'Create item',
+        url: 'https://api.example.com/items',
+        method: 'POST',
+        body: '{"name": "{{params.name}}"}',
+      }],
+    };
+    const result = parseAndValidateConfig(config);
+    expect(result.tools[0].body).toBe('{"name": "{{params.name}}"}');
+  });
+
+  it('accepts object body', () => {
+    const config = {
+      ...validConfig,
+      tools: [{
+        name: 'create',
+        description: 'Create item',
+        url: 'https://api.example.com/items',
+        method: 'POST',
+        body: { name: '{{params.name}}', role: 'admin' },
+      }],
+    };
+    const result = parseAndValidateConfig(config);
+    expect(result.tools[0].body).toEqual({ name: '{{params.name}}', role: 'admin' });
+  });
 });

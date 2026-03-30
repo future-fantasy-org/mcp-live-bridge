@@ -9,12 +9,69 @@ export function renderUrl(urlTemplate: string, params: Record<string, any>): str
 }
 
 export function renderBody(
-  bodyTemplate: string | undefined,
-  params: Record<string, any>
+  bodyTemplate: string | Record<string, unknown> | undefined,
+  params: Record<string, any>,
+  contentType?: string
 ): string | undefined {
-  if (!bodyTemplate) return undefined;
-  const template = Handlebars.compile(bodyTemplate, { noEscape: true });
-  return template({ params });
+  if (bodyTemplate === undefined) return undefined;
+
+  if (typeof bodyTemplate === 'string') {
+    const template = Handlebars.compile(bodyTemplate, { noEscape: true });
+    return template({ params });
+  }
+
+  // Object body: recursively render string values, then serialize
+  const rendered = renderObjectTemplate(bodyTemplate, params);
+
+  if (contentType === 'application/x-www-form-urlencoded') {
+    const flat = flattenObject(rendered);
+    return new URLSearchParams(flat).toString();
+  }
+
+  // Default: application/json
+  return JSON.stringify(rendered);
+}
+
+function renderObjectTemplate(
+  obj: Record<string, unknown>,
+  params: Record<string, any>
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      const template = Handlebars.compile(value, { noEscape: true });
+      result[key] = template({ params });
+    } else if (Array.isArray(value)) {
+      result[key] = value.map(item =>
+        typeof item === 'object' && item !== null && !Array.isArray(item)
+          ? renderObjectTemplate(item as Record<string, unknown>, params)
+          : typeof item === 'string'
+            ? (() => { const t = Handlebars.compile(item, { noEscape: true }); return t({ params }); })()
+            : item
+      );
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = renderObjectTemplate(value as Record<string, unknown>, params);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function flattenObject(
+  obj: Record<string, unknown>,
+  prefix = ''
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}[${key}]` : key;
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      Object.assign(result, flattenObject(value as Record<string, unknown>, fullKey));
+    } else {
+      result[fullKey] = String(value);
+    }
+  }
+  return result;
 }
 
 export function renderHeaders(

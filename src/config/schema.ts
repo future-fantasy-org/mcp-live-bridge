@@ -22,7 +22,7 @@ const toolDefSchema = z.object({
   method: z.string().toUpperCase(),
   headers: z.record(z.string(), z.string()).optional(),
   content_type: z.string().optional(),
-  body: z.string().optional(),
+  body: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   parameters: z.record(z.string(), parameterDefSchema).optional(),
   response: responseDefSchema.optional(),
 });

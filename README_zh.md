@@ -154,7 +154,7 @@ tools:                              # 必填：工具定义数组
     url: https://api.example.com    # 必填：完整端点 URL
     method: GET                     # 必填：HTTP 方法
     headers: {}                     # 可选：工具级别请求头（与全局合并）
-    body: ""                        # 可选：请求体模板
+    body: ""                        # 可选：请求体模板（字符串或对象）
     content_type: ""                # 可选：Content-Type 覆盖
     parameters: {}                  # 可选：参数定义
     response: {}                    # 可选：响应转换
@@ -174,6 +174,51 @@ tools:                              # 必填：工具定义数组
 | `enum`        | string[] | 否   | 允许的值列表                                  |
 
 参数通过 `{{params.<name>}}` 注入到模板中。
+
+### 请求体
+
+`body` 字段支持两种格式：
+
+**字符串模板**（原有格式，仍然支持）：
+
+```yaml
+body: '{"username": "{{params.username}}", "email": "{{params.email}}"}'
+```
+
+**对象定义**（推荐）：
+
+```yaml
+body:
+  username: "{{params.username}}"
+  email: "{{params.email}}"
+  role: admin          # 静态值原样保留
+  count: "{{params.n}}" # 渲染为字符串
+```
+
+对象根据 `content_type` 自动序列化：
+
+| content_type | 序列化方式 |
+|---|---|
+| `application/json`（默认） | `JSON.stringify` |
+| `application/x-www-form-urlencoded` | `key=value&key2=value2` |
+
+URL-encoded 表单示例：
+
+```yaml
+content_type: application/x-www-form-urlencoded
+body:
+  username: "{{params.username}}"
+  password: "{{params.password}}"
+```
+
+支持嵌套对象，JSON 格式保留嵌套结构，URL-encoded 格式自动扁平化：
+
+```yaml
+body:
+  user:
+    name: "{{params.name}}"
+    email: "{{params.email}}"
+```
 
 ### 响应转换
 

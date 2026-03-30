@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.6]
 
 ### Added
 - `import` CLI command to generate bridge config from OpenAPI/Swagger specs
@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`server.log_level` config option** — Set log level via config file in addition to CLI flags
 - **Session lifecycle logging** — Session init, close, and transport errors logged with active session count
 - **Stale session handling** — Requests with unrecognized `mcp-session-id` are silently re-routed as new connections
+- **Object body definition** — `body` field now accepts YAML objects in addition to string templates, with automatic serialization based on `content_type` (`application/json` or `application/x-www-form-urlencoded`)
+- **Request body documentation** — Added "Request Body" section to README covering string template and object definition formats
 
 ### Changed
 - **CORS headers updated** — Added `Mcp-Protocol-Version` to allowed and exposed headers for full SDK protocol compliance
