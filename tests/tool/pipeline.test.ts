@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { createPipeline } from '../../src/tool/pipeline.js';
-import type { ToolDef, Logger } from '../../src/config/types.js';
+import type { ToolDef } from '../../src/config/types.js';
+import type { Logger } from '../../src/utils/logger.js';
 
 let server: Server;
 let port: number;
@@ -134,6 +135,7 @@ describe('Pipeline', () => {
     const logger: Logger = {
       info: (msg: string) => logMessages.push(msg),
       verbose: () => {},
+      debug: () => {},
       warn: () => {},
       error: () => {},
     };

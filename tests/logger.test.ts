@@ -37,4 +37,18 @@ describe('Logger', () => {
     quietLogger.error('should show');
     expect(consoleSpy).toHaveBeenCalled();
   });
+
+  it('logs debug messages only in debug mode', () => {
+    logger.debug('should not show');
+    expect(consoleSpy).not.toHaveBeenCalled();
+
+    const verboseLogger = createLogger('verbose');
+    verboseLogger.debug('should not show in verbose');
+    expect(consoleSpy).not.toHaveBeenCalled();
+
+    const debugLogger = createLogger('debug');
+    consoleSpy.mockClear();
+    debugLogger.debug('debug detail');
+    expect(consoleSpy).toHaveBeenCalled();
+  });
 });

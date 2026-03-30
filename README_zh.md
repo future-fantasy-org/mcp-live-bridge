@@ -14,8 +14,12 @@ mcp-live-bridge 通过读取描述 HTTP 端点的配置文件，自动将它们�
 - **响应转换** — JSONPath 提取和 Handlebars 模板格式化
 - **多格式配置** — 支持 YAML、JSON 和 TOML
 - **认证生命周期管理** — 自动令牌刷新、轮询验证、401 自动重试
+- **Per-session 传输** — 每个 MCP 客户端拥有独立的传输实例，支持多客户端同时连接
+- **Debug 日志** — 可配置日志级别（`quiet`、`default`、`verbose`、`debug`），支持请求/响应详情追踪
+- **OpenAPI 导入** — 从 OpenAPI/Swagger 规范自动生成 bridge 配置
+- **交互式初始化** — 引导式配置生成向导
 - **Streamable HTTP 传输** — 使用官方 MCP SDK 的 Streamable HTTP 传输
-- **CLI 界面** — `start`、`validate`、`list` 命令
+- **CLI 界面** — `start`、`validate`、`list`、`init`、`import` 命令
 
 ## 快速开始
 
@@ -98,7 +102,7 @@ mcp-live-bridge start -c <配置文件> [选项]
 
 选项:
   -p, --port <端口>     覆盖服务器端口
-  --verbose             详细日志
+  --verbose             详细日志（也可通过 server.log_level 配置）
   --quiet               仅输出错误
 
 # 验证配置文件（不启动服务器）
@@ -133,6 +137,7 @@ server:                             # 可选：服务器设置
   port: 8080                        # 默认：8080
   cors_origin: "*"                  # 默认："*"
   timeout: 30000                    # 请求超时时间，单位毫秒（默认：30000）
+  log_level: default                # "quiet" | "default" | "verbose" | "debug"（默认："default"）
 
 auth:                               # 必填：认证配置
   provider: form                    # 内置："form" | "oauth2" 或自定义 .mjs 文件路径
@@ -255,6 +260,11 @@ auth:
 
 ### 认证验证与刷新
 
+认证系统提供两种机制来保持凭证有效：
+
+1. **主动轮询** — 定期调用验证端点检查凭证是否仍然有效，在过期前主动刷新
+2. **被动刷新** — 当工具调用收到 401 响应时，自动刷新凭证并重试请求
+
 ```yaml
 auth:
   provider: form
@@ -263,18 +273,34 @@ auth:
     username: user
     password: pass
 
-  validation:                        # 可选：定期认证健康检查
+  validation:                        # 可选：认证健康检查端点
     check_url: https://api.example.com/me
-    check_method: GET                # 默认：GET
+    check_method: GET                # 默认：GET（如果设置了 check_body 则为 POST）
+    check_headers: {}                # 可选：检查请求的额外请求头
+    check_body: ""                   # 可选：请求体（自动切换为 POST 方法）
     valid_when:
       status: 200                    # 期望的 HTTP 状态码
+      # jsonpath_not_exists: "$.expired"   # 可选：不应存在的 JSONPath
+      # jsonpath_equals:               # 可选：JSONPath 值断言
+      #   "$.active": true
+      # json_match:                    # 可选：响应体的正则匹配
+      #   pattern: ".*ok.*"
 
-  refresh:                           # 可选：刷新行为
+  refresh:                           # 刷新行为
     on_failure: true                 # 401 时自动刷新（默认：true）
-    retry_count: 3                   # 最大重试次数（默认：3）
+    retry_count: 3                   # 刷新失败最大重试次数（默认：3）
     retry_delay: 5                   # 重试间隔秒数（默认：5）
-    poll_interval: 300               # 每 N 秒验证一次（可选）
+    poll_interval: 300               # 主动模式：每 N 秒验证一次（可选，默认禁用）
 ```
+
+**工作原理：**
+
+| 触发条件 | 行为 |
+|---------|------|
+| 配置了 `poll_interval` | 每 N 秒调用 `validation.check_url`，附带当前认证头。如果检查失败，触发 `refresh()` |
+| 工具调用返回 401 | 自动调用 `refresh()` 并重试请求（最多 `retry_count + 1` 次） |
+| 未定义 `validation` | 如果设置了 `poll_interval`，则回退使用 `provider.isValid()` |
+| 未配置 `poll_interval` | 轮询禁用；仅在收到 401 时被动刷新 |
 
 ## 示例
 
@@ -291,11 +317,11 @@ auth:
 │                    mcp-live-bridge                   │
 │                                                      │
 │  ┌──────────┐   ┌──────────────┐   ┌──────────────┐ │
-│  │  配置加载  │──>│  工具注册表   │──>│  MCP 服务器  │ │
-│  │           │   │              │   │ (Streamable  │ │
-│  └──────────┘   └──────┬───────┘   │  HTTP)       │ │
-│                        │           └──────────────┘ │
-│                        v                             │
+│  │  配置加载  │──>│  工具注册表   │──>│ MCP 服务器   │ │
+│  │           │   │              │   │ (per-session)│ │
+│  └──────────┘   └──────┬───────┘   └──────┬───────┘ │
+│                        │                    │        │
+│                        v                    v        │
 │  ┌─────────────────────────────────────────────────┐ │
 │  │               请求处理管道                       │ │
 │  │  认证头 -> 模板渲染 -> HTTP 请求 -> 响应转换     │ │
@@ -303,7 +329,12 @@ auth:
 │                                                      │
 │  ┌─────────────────────────────────────────────────┐ │
 │  │            认证生命周期管理器                    │ │
-│  │  初始化 -> 轮询验证 -> 失败时自动刷新            │ │
+│  │  初始化 -> 轮询验证 -> 401/失败时自动刷新        │ │
+│  └─────────────────────────────────────────────────┘ │
+│                                                      │
+│  ┌─────────────────────────────────────────────────┐ │
+│  │  会话管理器（每客户端独立传输）                  │ │
+│  │  每个会话创建新 transport -> 按 session ID 路由  │ │
 │  └─────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────┘
 ```

@@ -5,9 +5,9 @@ import { loadAuthProviderAsync } from './auth/loader.js';
 import { AuthLifecycleManager } from './auth/manager.js';
 import { ToolRegistry, paramDefToZodSchema } from './tool/registry.js';
 import { createPipeline } from './tool/pipeline.js';
-import { createMcpServer } from './server/sse.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
 const program = new Command();
@@ -16,9 +16,12 @@ program
   .description('Config-driven CLI that exposes external HTTP APIs as MCP tools')
   .version('0.1.0');
 
-function parseLogLevel(verbose: boolean, quiet: boolean): LogLevel {
+function resolveLogLevel(verbose: boolean, quiet: boolean, configLevel?: string): LogLevel {
   if (quiet) return 'quiet';
   if (verbose) return 'verbose';
+  if (configLevel === 'debug') return 'debug';
+  if (configLevel === 'verbose') return 'verbose';
+  if (configLevel === 'quiet') return 'quiet';
   return 'default';
 }
 
@@ -30,11 +33,10 @@ program
   .option('--verbose', 'Verbose logging')
   .option('--quiet', 'Quiet mode (errors only)')
   .action(async (options) => {
-    const logLevel = parseLogLevel(options.verbose, options.quiet);
-    const logger = createLogger(logLevel);
-
     try {
       const config = loadConfig(options.config);
+      const logLevel = resolveLogLevel(options.verbose, options.quiet, config.server?.log_level);
+      const logger = createLogger(logLevel);
       logger.info(`Loading config: ${options.config}`);
       logger.info(`Config loaded: ${config.tools.length} tools registered`);
 
@@ -54,56 +56,83 @@ program
       logger.info('Auth initialized successfully');
 
       const registry = new ToolRegistry(config.tools);
-      const mcpServer = createMcpServer(config);
 
-      for (const toolDef of registry.getAllTools()) {
-        const pipeline = createPipeline(toolDef, config.headers ?? {}, timeout, logger);
-        pipeline.setAuthManager(authManager);
-        const paramDefs = toolDef.parameters ?? {};
-        const schema = paramDefToZodSchema(paramDefs);
+      // Session store: sessionId -> transport
+      const sessions = new Map<string, StreamableHTTPServerTransport>();
 
-        mcpServer.tool(toolDef.name, toolDef.description, schema, async (params) => {
-          logger.info(`Tool call: ${toolDef.name}(${JSON.stringify(params)})`);
-          const startTime = Date.now();
-          try {
-            const result = await pipeline.execute(params);
-            const elapsed = Date.now() - startTime;
-            logger.info(`Tool call: ${toolDef.name} -> 200 OK (${elapsed}ms)`);
-            return {
-              content: [{ type: 'text' as const, text: typeof result === 'string' ? result : JSON.stringify(result) }],
-            };
-          } catch (err: any) {
-            const elapsed = Date.now() - startTime;
-            logger.error(`Tool call: ${toolDef.name} -> ${err.message} (${elapsed}ms)`);
-            return {
-              content: [{ type: 'text' as const, text: `Error: ${err.message}` }],
-              isError: true,
-            };
-          }
+      // Factory: create a new McpServer + transport pair for a session
+      function createSession(): { server: McpServer; transport: StreamableHTTPServerTransport } {
+        const mcpServer = new McpServer({
+          name: config.name,
+          version: config.version ?? '1.0',
         });
+
+        for (const toolDef of registry.getAllTools()) {
+          const pipeline = createPipeline(toolDef, config.headers ?? {}, timeout, logger);
+          pipeline.setAuthManager(authManager);
+          const paramDefs = toolDef.parameters ?? {};
+          const schema = paramDefToZodSchema(paramDefs);
+
+          mcpServer.tool(toolDef.name, toolDef.description, schema, async (params) => {
+            logger.info(`Tool call: ${toolDef.name}(${JSON.stringify(params)})`);
+            const startTime = Date.now();
+            try {
+              const result = await pipeline.execute(params);
+              const elapsed = Date.now() - startTime;
+              logger.info(`Tool call: ${toolDef.name} -> 200 OK (${elapsed}ms)`);
+              return {
+                content: [{ type: 'text' as const, text: typeof result === 'string' ? result : JSON.stringify(result) }],
+              };
+            } catch (err: any) {
+              const elapsed = Date.now() - startTime;
+              logger.error(`Tool call: ${toolDef.name} -> ${err.message} (${elapsed}ms)`);
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${err.message}` }],
+                isError: true,
+              };
+            }
+          });
+        }
+
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId: string) => {
+            sessions.set(sessionId, transport);
+            logger.info(`MCP session initialized: ${sessionId} (active: ${sessions.size})`);
+          },
+          onsessionclosed: (sessionId: string) => {
+            sessions.delete(sessionId);
+            logger.info(`MCP session closed: ${sessionId} (active: ${sessions.size})`);
+          },
+        });
+
+        transport.onclose = () => {
+          const sid = transport.sessionId;
+          if (sid) {
+            sessions.delete(sid);
+            logger.info(`MCP transport closed for session: ${sid} (active: ${sessions.size})`);
+          }
+        };
+        transport.onerror = (error: Error) => {
+          logger.error(`MCP transport error: ${error.message}`);
+        };
+
+        mcpServer.connect(transport);
+
+        return { server: mcpServer, transport };
       }
 
-      // Create Streamable HTTP transport and connect to MCP server
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-      });
+      // Pending transport: reused for all requests without a known session
+      // until it gets initialized, then a new pending one is created.
+      let pendingTransport = createSession().transport;
+      logger.info('MCP server ready (per-session transport mode)');
 
-      transport.onclose = () => {
-        logger.info('MCP transport connection closed');
-      };
-      transport.onerror = (error: Error) => {
-        logger.error(`MCP transport error: ${error.message}`);
-      };
-
-      await mcpServer.connect(transport);
-      logger.info('MCP server connected to Streamable HTTP transport');
-
-      const httpServer = createServer(async (req, res) => {
+      const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         // Handle CORS preflight
         res.setHeader('Access-Control-Allow-Origin', corsOrigin);
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, MCP-Session-Id');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, MCP-Session-Id, Mcp-Protocol-Version');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-Id');
+        res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-Id, Mcp-Protocol-Version');
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
           res.end();
@@ -111,7 +140,29 @@ program
         }
 
         try {
-          await transport.handleRequest(req, res);
+          const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+          // Route to existing session transport if session ID is known
+          const sessionTransport = sessionId ? sessions.get(sessionId) : undefined;
+          if (sessionTransport) {
+            await sessionTransport.handleRequest(req, res);
+            return;
+          }
+
+          // Request has a session ID that doesn't match any known session — stale session.
+          // Strip the header silently so the request is treated as a new connection.
+          if (sessionId) {
+            logger.debug(`Stale session ID: ${sessionId}, treating as new connection`);
+            delete req.headers['mcp-session-id'];
+          }
+
+          // Use the pending transport for new connections. After initialization
+          // completes, prepare a new pending transport for the next client.
+          await pendingTransport.handleRequest(req, res);
+
+          if (pendingTransport.sessionId !== undefined) {
+            pendingTransport = createSession().transport;
+          }
         } catch (err: any) {
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -126,7 +177,11 @@ program
         if (isShuttingDown) return;
         isShuttingDown = true;
         logger.info('Shutting down...');
-        await transport.close();
+        for (const [sid, transport] of sessions) {
+          logger.info(`Closing session: ${sid}`);
+          await transport.close();
+        }
+        await pendingTransport.close();
         httpServer.close();
         setTimeout(() => {
           logger.warn('Graceful shutdown timeout, forcing exit');

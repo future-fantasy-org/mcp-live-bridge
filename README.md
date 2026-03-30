@@ -12,8 +12,12 @@ mcp-live-bridge reads a configuration file describing HTTP endpoints and automat
 - **Response transformation** — JSONPath extraction and Handlebars template formatting
 - **Multi-format config** — YAML, JSON, or TOML
 - **Auth lifecycle management** — Auto token refresh, polling validation, and retry on 401
+- **Per-session transport** — Each MCP client gets its own transport instance, supporting multiple simultaneous connections
+- **Debug logging** — Configurable log levels (`quiet`, `default`, `verbose`, `debug`) with request/response detail tracing
+- **OpenAPI import** — Generate bridge config from OpenAPI/Swagger specs
+- **Interactive init** — Guided config generation wizard
 - **Streamable HTTP transport** — Uses the official MCP SDK with Streamable HTTP
-- **CLI interface** — `start`, `validate`, and `list` commands
+- **CLI interface** — `start`, `validate`, `list`, `init`, and `import` commands
 
 ## Quick Start
 
@@ -96,7 +100,7 @@ mcp-live-bridge start -c <config-file> [options]
 
 Options:
   -p, --port <number>   Override server port
-  --verbose             Verbose logging
+  --verbose             Verbose logging (can also be set via server.log_level in config)
   --quiet               Errors only
 
 # Validate config file without starting
@@ -131,6 +135,7 @@ server:                             # Optional: Server settings
   port: 8080                        # Default: 8080
   cors_origin: "*"                  # Default: "*"
   timeout: 30000                    # Request timeout in ms (default: 30000)
+  log_level: default                # "quiet" | "default" | "verbose" | "debug" (default: "default")
 
 auth:                               # Required: Authentication config
   provider: form                    # Built-in: "form" | "oauth2" | path to custom .mjs
@@ -253,6 +258,11 @@ See [`examples/jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) for a com
 
 ### Auth Validation & Refresh
 
+The auth system provides two mechanisms to keep credentials valid:
+
+1. **Proactive polling** — Periodically calls a validation endpoint to check if credentials are still valid, and refreshes proactively before they expire
+2. **Reactive refresh** — When a tool call receives a 401 response, automatically refreshes credentials and retries the request
+
 ```yaml
 auth:
   provider: form
@@ -261,18 +271,34 @@ auth:
     username: user
     password: pass
 
-  validation:                        # Optional: Periodic auth health check
+  validation:                        # Optional: Auth health check endpoint
     check_url: https://api.example.com/me
-    check_method: GET                # Default: GET
+    check_method: GET                # Default: GET (or POST if check_body is set)
+    check_headers: {}                # Optional: Extra headers for the check request
+    check_body: ""                   # Optional: Request body (switches method to POST)
     valid_when:
-      status: 200                    # Expected HTTP status
+      status: 200                    # Expected HTTP status code
+      # jsonpath_not_exists: "$.expired"   # Optional: JSONPath that must not exist
+      # jsonpath_equals:               # Optional: JSONPath value assertions
+      #   "$.active": true
+      # json_match:                    # Optional: Regex match on response body
+      #   pattern: ".*ok.*"
 
-  refresh:                           # Optional: Refresh behavior
+  refresh:                           # Refresh behavior
     on_failure: true                 # Auto-refresh on 401 (default: true)
-    retry_count: 3                   # Max retries (default: 3)
+    retry_count: 3                   # Max retries on refresh failure (default: 3)
     retry_delay: 5                   # Seconds between retries (default: 5)
-    poll_interval: 300               # Validate every N seconds (optional)
+    poll_interval: 300               # Proactive: validate every N seconds (optional, disabled by default)
 ```
+
+**How it works:**
+
+| Trigger | Behavior |
+|---------|----------|
+| `poll_interval` is set | Every N seconds, calls `validation.check_url` with current auth headers. If the check fails, triggers `refresh()` |
+| Tool call returns 401 | Automatically calls `refresh()` and retries the request (up to `retry_count + 1` times) |
+| No `validation` defined | Falls back to `provider.isValid()` for polling (if `poll_interval` is set) |
+| No `poll_interval` | Polling is disabled; refresh only happens reactively on 401 |
 
 ## Examples
 
@@ -289,11 +315,11 @@ See the [`examples/`](examples/) directory for complete working examples:
 │                    mcp-live-bridge                   │
 │                                                      │
 │  ┌──────────┐   ┌──────────────┐   ┌──────────────┐ │
-│  │  Config   │──>│ Tool Registry │──>│  MCP Server  │ │
-│  │  Loader   │   │              │   │ (Streamable  │ │
-│  └──────────┘   └──────┬───────┘   │  HTTP)       │ │
-│                        │           └──────────────┘ │
-│                        v                             │
+│  │  Config   │──>│ Tool Registry │──>│ MCP Server   │ │
+│  │  Loader   │   │              │   │ (per-session)│ │
+│  └──────────┘   └──────┬───────┘   └──────┬───────┘ │
+│                        │                    │        │
+│                        v                    v        │
 │  ┌─────────────────────────────────────────────────┐ │
 │  │              Request Pipeline                   │ │
 │  │  Auth Headers -> Template -> HTTP -> Transform  │ │
@@ -301,7 +327,12 @@ See the [`examples/`](examples/) directory for complete working examples:
 │                                                      │
 │  ┌─────────────────────────────────────────────────┐ │
 │  │           Auth Lifecycle Manager                │ │
-│  │  Init -> Validate (poll) -> Refresh on failure  │ │
+│  │  Init -> Poll Validate -> Refresh on 401/fail  │ │
+│  └─────────────────────────────────────────────────┘ │
+│                                                      │
+│  ┌─────────────────────────────────────────────────┐ │
+│  │  Session Manager (per-client transport)         │ │
+│  │  New transport per session -> route by session  │ │
 │  └─────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────┘
 ```

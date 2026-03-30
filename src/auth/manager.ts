@@ -17,7 +17,9 @@ export class AuthLifecycleManager {
   ) {}
 
   async start(): Promise<void> {
+    this.logger.debug(`Auth init: provider=${this.authDef.provider}`);
     await this.provider.init(this.authDef.config);
+    this.logger.debug('Auth init: success');
     this.startPollLoop();
   }
 
@@ -30,7 +32,9 @@ export class AuthLifecycleManager {
   }
 
   async getAuthHeaders(): Promise<Record<string, string>> {
-    return this.provider.getAuthHeaders();
+    const headers = await this.provider.getAuthHeaders();
+    this.logger.debug(`Auth headers: ${JSON.stringify(headers)}`);
+    return headers;
   }
 
   async getAuthContext(): Promise<Record<string, any>> {
@@ -49,7 +53,9 @@ export class AuthLifecycleManager {
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           this.logger.info('Auth refresh triggered');
+          this.logger.debug(`Auth refresh attempt ${attempt + 1}/${maxRetries + 1}`);
           await this.provider.refresh();
+          this.logger.debug('Auth refresh: success');
           this.logger.info('Auth refresh success');
           return;
         } catch (err: any) {
@@ -70,13 +76,16 @@ export class AuthLifecycleManager {
 
     try {
       const authHeaders = await this.provider.getAuthHeaders();
+      this.logger.debug(`Auth validate: ${validation.check_method ?? 'GET'} ${validation.check_url}`);
       const response = await this.httpClient.request({
         url: validation.check_url,
         method: validation.check_method ?? (validation.check_body ? 'POST' : 'GET'),
         headers: { ...(validation.check_headers ?? {}), ...authHeaders },
         body: validation.check_body,
       });
-      return evaluateValidWhen(response, validation.valid_when);
+      const valid = evaluateValidWhen(response, validation.valid_when);
+      this.logger.debug(`Auth validate: status=${response.status} valid=${valid}`);
+      return valid;
     } catch {
       return false;
     }

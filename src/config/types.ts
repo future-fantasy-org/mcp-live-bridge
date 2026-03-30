@@ -56,6 +56,7 @@ export interface ServerDef {
   port?: number;
   cors_origin?: string;
   timeout?: number;
+  log_level?: 'quiet' | 'default' | 'verbose' | 'debug';
 }
 
 export interface BridgeConfig {

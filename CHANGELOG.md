@@ -16,6 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for importing OpenAPI spec during init flow
 - Cookie auth example with CSRF-aware custom provider
 - OAuth2 auth example with built-in provider
+- **Per-session transport** — Each MCP client gets its own `McpServer` + transport instance, supporting multiple simultaneous connections via session ID routing
+- **Debug log level** — New `debug` log level with detailed request/response tracing (`server.log_level: debug` or `--verbose` flag hierarchy: quiet < default < verbose < debug)
+- **Request/response debug logging** — Pipeline logs outbound request (method, URL, headers, body, params) and inbound response (status, headers, body) at debug level
+- **Auth lifecycle debug logging** — Auth init, refresh attempts, validation checks, and auth headers all traced at debug level
+- **`server.log_level` config option** — Set log level via config file in addition to CLI flags
+- **Session lifecycle logging** — Session init, close, and transport errors logged with active session count
+- **Stale session handling** — Requests with unrecognized `mcp-session-id` are silently re-routed as new connections
+
+### Changed
+- **CORS headers updated** — Added `Mcp-Protocol-Version` to allowed and exposed headers for full SDK protocol compliance
+- **CLI command list updated** — README reflects `init` and `import` commands
+- **Auth validation docs expanded** — Added proactive polling vs reactive refresh explanation, `check_headers`/`check_body`/`jsonpath_not_exists`/`jsonpath_equals`/`json_match` options documented
+- **Architecture diagram updated** — Shows per-session transport, session manager, and updated auth lifecycle
+
+### Fixed
+- **Graceful shutdown** — Properly closes all active session transports and pending transport before exit
+- **Logger interface** — Added `debug()` method to `Logger` interface (was missing, causing type errors)
 
 ## [0.1.0] - 2026-03-28
 

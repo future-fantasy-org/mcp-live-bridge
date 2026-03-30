@@ -44,15 +44,30 @@ export function createPipeline(
         const headers = renderHeaders(toolDef.headers, authContext, params, globalHeaders, authHeaders, toolDef.parameters);
         const body = renderBody(toolDef.body, params);
 
+        const requestHeaders: Record<string, string> = {
+          ...(body ? { 'Content-Type': toolDef.content_type ?? 'application/json' } : {}),
+          ...headers,
+        };
+
+        logger?.debug(`→ REQUEST: ${toolDef.method} ${url}`);
+        logger?.debug(`→ HEADERS: ${JSON.stringify(requestHeaders)}`);
+        if (body) {
+          logger?.debug(`→ BODY: ${body}`);
+        }
+        if (Object.keys(params).length > 0) {
+          logger?.debug(`→ PARAMS: ${JSON.stringify(params)}`);
+        }
+
         const response = await httpClient.request({
           url,
           method: toolDef.method,
-          headers: {
-            ...(body ? { 'Content-Type': toolDef.content_type ?? 'application/json' } : {}),
-            ...headers,
-          },
+          headers: requestHeaders,
           body,
         });
+
+        logger?.debug(`← RESPONSE: ${response.status}`);
+        logger?.debug(`← HEADERS: ${JSON.stringify(response.headers)}`);
+        logger?.debug(`← BODY: ${response.body}`);
 
         if (response.status === 401 && authManager) {
           logger?.info(`Tool call: ${toolDef.name} -> 401, refreshing auth...`);

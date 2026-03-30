@@ -4,13 +4,14 @@ version: "1.0"
 server:
   host: 0.0.0.0
   port: 8090
+  log_level: debug
 
 auth:
   provider: ./examples/jwt-auth-provider.mjs
   config:
     token_url: http://localhost:8666/api/auth/login
     username: test
-    password: 123456
+    password: "123456"
 
   validation:
     check_url: http://localhost:8666/api/auth/me
@@ -22,6 +23,7 @@ auth:
     on_failure: true
     retry_count: 3
     retry_delay: 2
+    poll_interval: 300
 
 headers:
   Content-Type: application/json

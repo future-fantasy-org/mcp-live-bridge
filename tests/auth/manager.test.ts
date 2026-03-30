@@ -15,6 +15,7 @@ vi.mock('../../src/utils/logger.js', () => ({
   createLogger: () => ({
     info: vi.fn(),
     verbose: vi.fn(),
+    debug: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
   }),
