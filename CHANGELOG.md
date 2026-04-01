@@ -5,18 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.9]
+## [0.1.11]
 
 ### Fixed
 - **Handler http body serialization** — Removed automatic `JSON.stringify` from `http.post`/`put`; body is now converted via `String()` without format assumptions. Handler must explicitly serialize body and set `Content-Type` header for both JSON and form-encoded payloads.
 
-## [0.1.8]
+## [0.1.10]
 
 ### Fixed
 - **Handler parameter location** — Added `'handler'` to `ParameterDef.location` enum so handler tool parameters can be properly validated.
 - **Handler form data tests** — Added test cases for form-encoded submission and string body passthrough in custom handlers.
 
-## [0.1.7]
+## [0.1.8]
 
 ### Added
 - **Custom handler tools** — New `type: handler` tool type allows writing custom `.mjs` scripts for multi-API orchestration (sequential, parallel, paginated calls)
@@ -25,13 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom handler documentation** — Added "Custom Handler Tools" section to README with context API reference and examples
 - **Handler config example** — `handler-service-config.yaml` demonstrating mixed HTTP and handler tools
 
-## [0.1.6]
+## [0.1.7]
 
 ### Added
 - **Object body definition** — `body` field now accepts YAML objects in addition to string templates, with automatic serialization based on `content_type` (`application/json` or `application/x-www-form-urlencoded`)
 - **Request body documentation** — Added "Request Body" section to README covering string template and object definition formats
 
-## [0.1.5]
+## [0.1.6]
 
 ### Added
 - **Per-session transport** — Each MCP client gets its own `McpServer` + transport instance, supporting multiple simultaneous connections via session ID routing
