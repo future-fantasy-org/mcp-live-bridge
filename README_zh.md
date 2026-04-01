@@ -298,15 +298,15 @@ export default async function(params, ctx) {
 | 属性 | 说明 |
 |---|---|
 | `http.get(url, opts?)` | GET 请求，自动解析 JSON 响应 |
-| `http.post(url, opts?)` | POST 请求；对象 body 自动序列化为 JSON，字符串 body 原样传递 |
-| `http.put(url, opts?)` | PUT 请求；对象 body 自动序列化为 JSON，字符串 body 原样传递 |
+| `http.post(url, opts?)` | POST 请求；body 通过 `String()` 转为字符串发送，自动解析 JSON 响应 |
+| `http.put(url, opts?)` | PUT 请求；body 通过 `String()` 转为字符串发送，自动解析 JSON 响应 |
 | `http.delete(url, opts?)` | DELETE 请求，自动解析 JSON 响应 |
 | `http.request(req)` | 原始请求（返回 `{ status, body, headers }`） |
 | `auth` | 当前认证头（如 `{ Authorization: "Bearer ..." }`） |
 | `config` | 配置文件中 `auth.config` 的值 |
 | `logger` | 日志实例（`info`、`debug`、`warn`、`error`） |
 
-所有 `http.*` 方法接受 options 对象：`{ headers?, body?, params? }`。`params` 字段会追加查询参数到 URL。`body` 如果是对象会自动序列化为 JSON，如果是字符串则原样传递。`Content-Type` 头**不会**自动设置——需要你自己通过 `headers` 指定。
+所有 `http.*` 方法接受 options 对象：`{ headers?, body?, params? }`。`params` 字段会追加查询参数到 URL。`body` 接受任意类型，发送前通过 `String()` 转为字符串。`Content-Type` 头**不会**自动设置——需要你自己通过 `headers` 指定并自行序列化 body。
 
 **更多示例：**
 
@@ -322,11 +322,11 @@ export default async function(params, ctx) {
 ```
 
 ```javascript
-// JSON 提交（显式设置 Content-Type）
+// JSON 提交（显式序列化和 Content-Type）
 export default async function(params, ctx) {
   const result = await ctx.http.post('https://api.example.com/users', {
     headers: { 'Content-Type': 'application/json', ...ctx.auth },
-    body: { name: params.name, email: params.email },
+    body: JSON.stringify({ name: params.name, email: params.email }),
   });
   return result;
 }

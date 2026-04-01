@@ -296,15 +296,15 @@ export default async function(params, ctx) {
 | Property | Description |
 |---|---|
 | `http.get(url, opts?)` | GET request, auto-parses JSON response |
-| `http.post(url, opts?)` | POST request; object body auto-serialized to JSON, string body passed as-is |
-| `http.put(url, opts?)` | PUT request; object body auto-serialized to JSON, string body passed as-is |
+| `http.post(url, opts?)` | POST request; body is converted to string via `String()`, auto-parses JSON response |
+| `http.put(url, opts?)` | PUT request; body is converted to string via `String()`, auto-parses JSON response |
 | `http.delete(url, opts?)` | DELETE request, auto-parses JSON response |
 | `http.request(req)` | Raw request (returns `{ status, body, headers }`) |
 | `auth` | Current auth headers (e.g., `{ Authorization: "Bearer ..." }`) |
 | `config` | `auth.config` values from config file |
 | `logger` | Logger instance (`info`, `debug`, `warn`, `error`) |
 
-All `http.*` methods accept an options object: `{ headers?, body?, params? }`. The `params` field appends query parameters to the URL. The `body` field is auto-serialized to JSON when it's an object, or passed as-is when it's a string. The `Content-Type` header is **not** set automatically — you must set it yourself via `headers`.
+All `http.*` methods accept an options object: `{ headers?, body?, params? }`. The `params` field appends query parameters to the URL. The `body` field accepts any type and is converted to string via `String()` before sending. The `Content-Type` header is **not** set automatically — you must set it yourself via `headers` and serialize the body appropriately.
 
 **More examples:**
 
@@ -320,11 +320,11 @@ export default async function(params, ctx) {
 ```
 
 ```javascript
-// JSON POST (explicit Content-Type)
+// JSON POST (explicit serialization and Content-Type)
 export default async function(params, ctx) {
   const result = await ctx.http.post('https://api.example.com/users', {
     headers: { 'Content-Type': 'application/json', ...ctx.auth },
-    body: { name: params.name, email: params.email },
+    body: JSON.stringify({ name: params.name, email: params.email }),
   });
   return result;
 }

@@ -88,7 +88,7 @@ describe('createHandlerContext', () => {
     const ctx = createHandlerContext(httpClient, {}, {}, logger);
 
     const result = await ctx.http.post(`http://127.0.0.1:${port}/users`, {
-      body: { name: 'Alice' },
+      body: JSON.stringify({ name: 'Alice' }),
       headers: { 'Content-Type': 'application/json' },
     });
     expect(result.method).toBe('POST');

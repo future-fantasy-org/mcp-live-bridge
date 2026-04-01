@@ -61,17 +61,13 @@ export function createHandlerContext(
       },
       async post(url, options = {}) {
         const finalUrl = buildUrl(url, options.params);
-        const body = options.body !== undefined
-          ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
-          : undefined;
+        const body = options.body !== undefined ? String(options.body) : undefined;
         const res = await httpClient.request({ url: finalUrl, method: 'POST', headers: options.headers ?? {}, body });
         return JSON.parse(res.body);
       },
       async put(url, options = {}) {
         const finalUrl = buildUrl(url, options.params);
-        const body = options.body !== undefined
-          ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
-          : undefined;
+        const body = options.body !== undefined ? String(options.body) : undefined;
         const res = await httpClient.request({ url: finalUrl, method: 'PUT', headers: options.headers ?? {}, body });
         return JSON.parse(res.body);
       },
