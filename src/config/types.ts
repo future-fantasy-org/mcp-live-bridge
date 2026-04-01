@@ -15,11 +15,13 @@ export interface ResponseDef {
 export interface ToolDef {
   name: string;
   description: string;
-  url: string;
-  method: string;
+  type?: 'http' | 'handler';
+  url?: string;
+  method?: string;
   headers?: Record<string, string>;
   content_type?: string;
   body?: string | Record<string, unknown>;
+  handler?: string;
   parameters?: Record<string, ParameterDef>;
   response?: ResponseDef;
 }

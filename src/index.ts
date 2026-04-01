@@ -5,9 +5,11 @@ import { loadAuthProviderAsync } from './auth/loader.js';
 import { AuthLifecycleManager } from './auth/manager.js';
 import { ToolRegistry, paramDefToZodSchema } from './tool/registry.js';
 import { createPipeline } from './tool/pipeline.js';
+import { loadToolHandler, createHandlerContext } from './tool/handler.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createHttpClient } from './utils/http.js';
 import { randomUUID } from 'node:crypto';
 
 const program = new Command();
@@ -61,37 +63,66 @@ program
       const sessions = new Map<string, StreamableHTTPServerTransport>();
 
       // Factory: create a new McpServer + transport pair for a session
-      function createSession(): { server: McpServer; transport: StreamableHTTPServerTransport } {
+      async function createSession(): Promise<{ server: McpServer; transport: StreamableHTTPServerTransport }> {
         const mcpServer = new McpServer({
           name: config.name,
           version: config.version ?? '1.0',
         });
 
         for (const toolDef of registry.getAllTools()) {
-          const pipeline = createPipeline(toolDef, config.headers ?? {}, timeout, logger);
-          pipeline.setAuthManager(authManager);
           const paramDefs = toolDef.parameters ?? {};
           const schema = paramDefToZodSchema(paramDefs);
 
-          mcpServer.tool(toolDef.name, toolDef.description, schema, async (params) => {
-            logger.info(`Tool call: ${toolDef.name}(${JSON.stringify(params)})`);
-            const startTime = Date.now();
-            try {
-              const result = await pipeline.execute(params);
-              const elapsed = Date.now() - startTime;
-              logger.info(`Tool call: ${toolDef.name} -> 200 OK (${elapsed}ms)`);
-              return {
-                content: [{ type: 'text' as const, text: typeof result === 'string' ? result : JSON.stringify(result) }],
-              };
-            } catch (err: any) {
-              const elapsed = Date.now() - startTime;
-              logger.error(`Tool call: ${toolDef.name} -> ${err.message} (${elapsed}ms)`);
-              return {
-                content: [{ type: 'text' as const, text: `Error: ${err.message}` }],
-                isError: true,
-              };
-            }
-          });
+          if (toolDef.type === 'handler' && toolDef.handler) {
+            const handler = await loadToolHandler(toolDef.handler);
+            const httpClient = createHttpClient({ timeout });
+            const handlerCtx = createHandlerContext(httpClient, {}, config.auth.config ?? {}, logger);
+
+            mcpServer.tool(toolDef.name, toolDef.description, schema, async (params) => {
+              logger.info(`Tool call: ${toolDef.name}(${JSON.stringify(params)}) [handler]`);
+              const startTime = Date.now();
+              try {
+                const authHeaders = await authManager.getAuthHeaders();
+                handlerCtx.auth = authHeaders;
+                const result = await handler(params, handlerCtx);
+                const elapsed = Date.now() - startTime;
+                logger.info(`Tool call: ${toolDef.name} -> 200 OK (${elapsed}ms) [handler]`);
+                return {
+                  content: [{ type: 'text' as const, text: typeof result === 'string' ? result : JSON.stringify(result) }],
+                };
+              } catch (err: any) {
+                const elapsed = Date.now() - startTime;
+                logger.error(`Tool call: ${toolDef.name} -> ${err.message} (${elapsed}ms) [handler]`);
+                return {
+                  content: [{ type: 'text' as const, text: `Error: ${err.message}` }],
+                  isError: true,
+                };
+              }
+            });
+          } else {
+            const pipeline = createPipeline(toolDef, config.headers ?? {}, timeout, logger);
+            pipeline.setAuthManager(authManager);
+
+            mcpServer.tool(toolDef.name, toolDef.description, schema, async (params) => {
+              logger.info(`Tool call: ${toolDef.name}(${JSON.stringify(params)})`);
+              const startTime = Date.now();
+              try {
+                const result = await pipeline.execute(params);
+                const elapsed = Date.now() - startTime;
+                logger.info(`Tool call: ${toolDef.name} -> 200 OK (${elapsed}ms)`);
+                return {
+                  content: [{ type: 'text' as const, text: typeof result === 'string' ? result : JSON.stringify(result) }],
+                };
+              } catch (err: any) {
+                const elapsed = Date.now() - startTime;
+                logger.error(`Tool call: ${toolDef.name} -> ${err.message} (${elapsed}ms)`);
+                return {
+                  content: [{ type: 'text' as const, text: `Error: ${err.message}` }],
+                  isError: true,
+                };
+              }
+            });
+          }
         }
 
         const transport = new StreamableHTTPServerTransport({
@@ -124,7 +155,7 @@ program
 
       // Pending transport: reused for all requests without a known session
       // until it gets initialized, then a new pending one is created.
-      let pendingTransport = createSession().transport;
+      let pendingTransport = (await createSession()).transport;
       logger.info('MCP server ready (per-session transport mode)');
 
       const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -161,7 +192,7 @@ program
           await pendingTransport.handleRequest(req, res);
 
           if (pendingTransport.sessionId !== undefined) {
-            pendingTransport = createSession().transport;
+            pendingTransport = (await createSession()).transport;
           }
         } catch (err: any) {
           if (!res.headersSent) {

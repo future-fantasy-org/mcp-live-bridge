@@ -1,0 +1,48 @@
+name: handler-demo
+version: "1.0"
+
+server:
+  host: 0.0.0.0
+  port: 8091
+
+auth:
+  provider: form
+  config:
+    login_url: https://api.example.com/login
+    username: your-username
+    password: your-password
+
+tools:
+  # Standard HTTP tool
+  - name: get_user
+    description: "Get a user by ID"
+    url: https://api.example.com/users/{{params.id}}
+    method: GET
+    parameters:
+      id:
+        type: integer
+        required: true
+        description: "User ID"
+        location: path
+
+  # Custom handler: sequential API calls
+  - name: create_user_and_profile
+    type: handler
+    handler: ./examples/tools/create-user-and-profile.mjs
+    description: "Create a user and fetch their profile"
+    parameters:
+      username:
+        type: string
+        required: true
+        description: "Username for the new account"
+        location: handler
+      email:
+        type: string
+        required: true
+        description: "Email for the new account"
+        location: handler
+      password:
+        type: string
+        required: true
+        description: "Password for the new account"
+        location: handler

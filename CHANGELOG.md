@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale session handling** — Requests with unrecognized `mcp-session-id` are silently re-routed as new connections
 - **Object body definition** — `body` field now accepts YAML objects in addition to string templates, with automatic serialization based on `content_type` (`application/json` or `application/x-www-form-urlencoded`)
 - **Request body documentation** — Added "Request Body" section to README covering string template and object definition formats
+- **Custom handler tools** — New `type: handler` tool type allows writing custom `.mjs` scripts for multi-API orchestration (sequential, parallel, paginated calls)
+- **Handler context injection** — Handler functions receive `http` convenience client (auto JSON), `auth` headers, `config`, and `logger`
+- **Handler examples** — Three example handlers: sequential (`create-user-and-profile.mjs`), parallel (`user-summary.mjs`), paginated (`search-all.mjs`)
+- **Custom handler documentation** — Added "Custom Handler Tools" section to README with context API reference and examples
 
 ### Changed
 - **CORS headers updated** — Added `Mcp-Protocol-Version` to allowed and exposed headers for full SDK protocol compliance

@@ -99,4 +99,52 @@ describe('parseAndValidateConfig', () => {
     const result = parseAndValidateConfig(config);
     expect(result.tools[0].body).toEqual({ name: '{{params.name}}', role: 'admin' });
   });
+
+  it('defaults type to http when not specified', () => {
+    const config = {
+      ...validConfig,
+    };
+    const result = parseAndValidateConfig(config);
+    expect(result.tools[0].type).toBe('http');
+  });
+
+  it('infers type handler when handler field is present', () => {
+    const config = {
+      ...validConfig,
+      tools: [{
+        name: 'custom',
+        description: 'Custom tool',
+        handler: './tools/custom.mjs',
+      }],
+    };
+    const result = parseAndValidateConfig(config);
+    expect(result.tools[0].type).toBe('handler');
+    expect(result.tools[0].handler).toBe('./tools/custom.mjs');
+  });
+
+  it('accepts explicit type handler with handler field', () => {
+    const config = {
+      ...validConfig,
+      tools: [{
+        name: 'custom',
+        description: 'Custom tool',
+        type: 'handler',
+        handler: './tools/custom.mjs',
+      }],
+    };
+    const result = parseAndValidateConfig(config);
+    expect(result.tools[0].type).toBe('handler');
+  });
+
+  it('rejects handler type without handler field', () => {
+    const config = {
+      ...validConfig,
+      tools: [{
+        name: 'custom',
+        description: 'Custom tool',
+        type: 'handler',
+      }],
+    };
+    expect(() => parseAndValidateConfig(config)).toThrow();
+  });
 });

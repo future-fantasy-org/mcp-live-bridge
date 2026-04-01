@@ -15,17 +15,44 @@ const responseDefSchema = z.object({
   template: z.string().optional(),
 });
 
-const toolDefSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().min(1),
-  url: z.string().url(),
-  method: z.string().toUpperCase(),
-  headers: z.record(z.string(), z.string()).optional(),
-  content_type: z.string().optional(),
-  body: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
-  parameters: z.record(z.string(), parameterDefSchema).optional(),
-  response: responseDefSchema.optional(),
-});
+const toolDefSchema = z.preprocess((val) => {
+  if (val && typeof val === 'object') {
+    if (!('type' in val) && 'handler' in val) {
+      return { ...val, type: 'handler' };
+    }
+    if (!('type' in val)) {
+      return { ...val, type: 'http' };
+    }
+  }
+  return val;
+}, z.discriminatedUnion('type', [
+  z.object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    type: z.literal('http'),
+    url: z.string().url(),
+    method: z.string().toUpperCase(),
+    headers: z.record(z.string(), z.string()).optional(),
+    content_type: z.string().optional(),
+    body: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
+    handler: z.string().optional(),
+    parameters: z.record(z.string(), parameterDefSchema).optional(),
+    response: responseDefSchema.optional(),
+  }),
+  z.object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    type: z.literal('handler'),
+    url: z.string().optional(),
+    method: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    content_type: z.string().optional(),
+    body: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
+    handler: z.string().min(1),
+    parameters: z.record(z.string(), parameterDefSchema).optional(),
+    response: responseDefSchema.optional(),
+  }),
+]));
 
 const validWhenSchema = z.object({
   status: z.number().optional(),

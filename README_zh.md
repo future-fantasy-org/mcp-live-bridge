@@ -237,6 +237,108 @@ tools:
 
 如果省略，则返回原始 JSON 响应。
 
+### 自定义 Handler 工具
+
+当一个 tool 需要调用多个 HTTP 接口时，可以使用 `type: handler` 定义自定义处理脚本：
+
+```yaml
+tools:
+  # 标准 HTTP 工具（默认）
+  - name: get_user
+    url: https://api.example.com/users/{{params.id}}
+    method: GET
+
+  # 自定义 handler 工具
+  - name: create_user_and_profile
+    type: handler
+    handler: ./tools/create-user-and-profile.mjs
+    description: "创建用户并获取完整资料"
+    parameters:
+      username:
+        type: string
+        required: true
+        description: "用户名"
+        location: handler
+      email:
+        type: string
+        required: true
+        description: "邮箱"
+        location: handler
+      password:
+        type: string
+        required: true
+        description: "密码"
+        location: handler
+```
+
+Handler 是一个 ESM 模块，导出一个默认函数，接收 `params` 和 `context`：
+
+```javascript
+// tools/create-user-and-profile.mjs
+export default async function(params, ctx) {
+  const { http, auth, logger } = ctx;
+
+  // 第一步：创建用户
+  const user = await http.post('https://api.example.com/users', {
+    headers: auth,
+    body: { username: params.username, email: params.email, password: params.password },
+  });
+
+  // 第二步：用返回的 ID 获取资料
+  const profile = await http.get(`https://api.example.com/users/${user.id}/profile`, {
+    headers: auth,
+  });
+
+  return { user, profile };
+}
+```
+
+**Context 可用属性：**
+
+| 属性 | 说明 |
+|---|---|
+| `http.get(url, opts?)` | GET 请求，自动解析 JSON 响应 |
+| `http.post(url, opts?)` | POST 请求，自动序列化 body 为 JSON |
+| `http.put(url, opts?)` | PUT 请求，自动序列化 body 为 JSON |
+| `http.delete(url, opts?)` | DELETE 请求，自动解析 JSON 响应 |
+| `http.request(req)` | 原始请求（返回 `{ status, body, headers }`） |
+| `auth` | 当前认证头（如 `{ Authorization: "Bearer ..." }`） |
+| `config` | 配置文件中 `auth.config` 的值 |
+| `logger` | 日志实例（`info`、`debug`、`warn`、`error`） |
+
+所有 `http.*` 方法接受 options 对象：`{ headers?, body?, params? }`。`params` 字段会追加查询参数到 URL。
+
+**更多示例：**
+
+```javascript
+// 并行请求
+export default async function(params, ctx) {
+  const { http, auth } = ctx;
+  const [user, orders, notifications] = await Promise.all([
+    http.get(`https://api.example.com/users/${params.userId}`, { headers: auth }),
+    http.get(`https://api.example.com/users/${params.userId}/orders`, { headers: auth }),
+    http.get(`https://api.example.com/users/${params.userId}/notifications`, { headers: auth }),
+  ]);
+  return { user, orderCount: orders.length, unread: notifications.filter(n => !n.read).length };
+}
+```
+
+```javascript
+// 分页遍历
+export default async function(params, ctx) {
+  const { http, auth, logger } = ctx;
+  let page = 1;
+  const allResults = [];
+  while (true) {
+    const res = await http.get('https://api.example.com/search', { headers: auth, params: { q: params.query, page } });
+    allResults.push(...res.results);
+    if (res.results.length < 20) break;
+    page++;
+  }
+  return { total: allResults.length, results: allResults };
+}
+```
+
 ## 认证
 
 ### 内置：Form 提供者
@@ -354,6 +456,10 @@ auth:
 - [`jwt-service-config.yaml`](examples/jwt-service-config.yaml) + [`jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) — JWT Token 认证（自定义 provider）
 - [`cookie-service-config.yaml`](examples/cookie-service-config.yaml) + [`cookie-auth-provider.mjs`](examples/cookie-auth-provider.mjs) — Cookie/Session 认证，支持 CSRF（自定义 provider）
 - [`oauth-service-config.yaml`](examples/oauth-service-config.yaml) — OAuth2 client_credentials 认证（内置 provider）
+- [`handler-service-config.yaml`](examples/handler-service-config.yaml) — 自定义 handler 工具，多 API 编排示例
+- [`tools/create-user-and-profile.mjs`](examples/tools/create-user-and-profile.mjs) — 串联调用示例
+- [`tools/user-summary.mjs`](examples/tools/user-summary.mjs) — 并行请求示例
+- [`tools/search-all.mjs`](examples/tools/search-all.mjs) — 分页遍历示例
 
 ## 架构
 

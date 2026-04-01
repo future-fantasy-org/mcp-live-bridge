@@ -235,6 +235,108 @@ tools:
 
 If omitted, the raw JSON response is returned.
 
+### Custom Handler Tools
+
+For scenarios where a single tool needs to call multiple HTTP endpoints, you can use `type: handler` to define a custom handler script:
+
+```yaml
+tools:
+  # Standard HTTP tool (default)
+  - name: get_user
+    url: https://api.example.com/users/{{params.id}}
+    method: GET
+
+  # Custom handler tool
+  - name: create_user_and_profile
+    type: handler
+    handler: ./tools/create-user-and-profile.mjs
+    description: "Create a user and fetch their profile"
+    parameters:
+      username:
+        type: string
+        required: true
+        description: "Username for the new account"
+        location: handler
+      email:
+        type: string
+        required: true
+        description: "Email for the new account"
+        location: handler
+      password:
+        type: string
+        required: true
+        description: "Password for the new account"
+        location: handler
+```
+
+The handler is an ESM module with a default export function. It receives `params` and a `context` object:
+
+```javascript
+// tools/create-user-and-profile.mjs
+export default async function(params, ctx) {
+  const { http, auth, logger } = ctx;
+
+  // Step 1: Create user
+  const user = await http.post('https://api.example.com/users', {
+    headers: auth,
+    body: { username: params.username, email: params.email, password: params.password },
+  });
+
+  // Step 2: Fetch profile using the returned ID
+  const profile = await http.get(`https://api.example.com/users/${user.id}/profile`, {
+    headers: auth,
+  });
+
+  return { user, profile };
+}
+```
+
+**Available context properties:**
+
+| Property | Description |
+|---|---|
+| `http.get(url, opts?)` | GET request, auto-parses JSON response |
+| `http.post(url, opts?)` | POST request, auto-serializes body to JSON |
+| `http.put(url, opts?)` | PUT request, auto-serializes body to JSON |
+| `http.delete(url, opts?)` | DELETE request, auto-parses JSON response |
+| `http.request(req)` | Raw request (returns `{ status, body, headers }`) |
+| `auth` | Current auth headers (e.g., `{ Authorization: "Bearer ..." }`) |
+| `config` | `auth.config` values from config file |
+| `logger` | Logger instance (`info`, `debug`, `warn`, `error`) |
+
+All `http.*` methods accept an options object: `{ headers?, body?, params? }`. The `params` field appends query parameters to the URL.
+
+**More examples:**
+
+```javascript
+// Parallel requests with Promise.all
+export default async function(params, ctx) {
+  const { http, auth } = ctx;
+  const [user, orders, notifications] = await Promise.all([
+    http.get(`https://api.example.com/users/${params.userId}`, { headers: auth }),
+    http.get(`https://api.example.com/users/${params.userId}/orders`, { headers: auth }),
+    http.get(`https://api.example.com/users/${params.userId}/notifications`, { headers: auth }),
+  ]);
+  return { user, orderCount: orders.length, unread: notifications.filter(n => !n.read).length };
+}
+```
+
+```javascript
+// Paginated fetching
+export default async function(params, ctx) {
+  const { http, auth, logger } = ctx;
+  let page = 1;
+  const allResults = [];
+  while (true) {
+    const res = await http.get('https://api.example.com/search', { headers: auth, params: { q: params.query, page } });
+    allResults.push(...res.results);
+    if (res.results.length < 20) break;
+    page++;
+  }
+  return { total: allResults.length, results: allResults };
+}
+```
+
 ## Authentication
 
 ### Built-in: Form Provider
@@ -352,6 +454,10 @@ See the [`examples/`](examples/) directory for complete working examples:
 - [`jwt-service-config.yaml`](examples/jwt-service-config.yaml) + [`jwt-auth-provider.mjs`](examples/jwt-auth-provider.mjs) — JWT token auth (custom provider)
 - [`cookie-service-config.yaml`](examples/cookie-service-config.yaml) + [`cookie-auth-provider.mjs`](examples/cookie-auth-provider.mjs) — Cookie/session auth with CSRF support (custom provider)
 - [`oauth-service-config.yaml`](examples/oauth-service-config.yaml) — OAuth2 client_credentials auth (built-in provider)
+- [`handler-service-config.yaml`](examples/handler-service-config.yaml) — Custom handler tools for multi-API orchestration
+- [`tools/create-user-and-profile.mjs`](examples/tools/create-user-and-profile.mjs) — Sequential API calls example
+- [`tools/user-summary.mjs`](examples/tools/user-summary.mjs) — Parallel requests example
+- [`tools/search-all.mjs`](examples/tools/search-all.mjs) — Paginated fetching example
 
 ## Architecture
 
