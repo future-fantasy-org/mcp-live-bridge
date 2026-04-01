@@ -298,28 +298,37 @@ export default async function(params, ctx) {
 | 属性 | 说明 |
 |---|---|
 | `http.get(url, opts?)` | GET 请求，自动解析 JSON 响应 |
-| `http.post(url, opts?)` | POST 请求，自动序列化 body 为 JSON |
-| `http.put(url, opts?)` | PUT 请求，自动序列化 body 为 JSON |
+| `http.post(url, opts?)` | POST 请求；对象 body 自动序列化为 JSON，字符串 body 原样传递 |
+| `http.put(url, opts?)` | PUT 请求；对象 body 自动序列化为 JSON，字符串 body 原样传递 |
 | `http.delete(url, opts?)` | DELETE 请求，自动解析 JSON 响应 |
 | `http.request(req)` | 原始请求（返回 `{ status, body, headers }`） |
 | `auth` | 当前认证头（如 `{ Authorization: "Bearer ..." }`） |
 | `config` | 配置文件中 `auth.config` 的值 |
 | `logger` | 日志实例（`info`、`debug`、`warn`、`error`） |
 
-所有 `http.*` 方法接受 options 对象：`{ headers?, body?, params? }`。`params` 字段会追加查询参数到 URL。
+所有 `http.*` 方法接受 options 对象：`{ headers?, body?, params? }`。`params` 字段会追加查询参数到 URL。`body` 如果是对象会自动序列化为 JSON，如果是字符串则原样传递。`Content-Type` 头**不会**自动设置——需要你自己通过 `headers` 指定。
 
 **更多示例：**
 
 ```javascript
-// 并行请求
+// 表单提交
 export default async function(params, ctx) {
-  const { http, auth } = ctx;
-  const [user, orders, notifications] = await Promise.all([
-    http.get(`https://api.example.com/users/${params.userId}`, { headers: auth }),
-    http.get(`https://api.example.com/users/${params.userId}/orders`, { headers: auth }),
-    http.get(`https://api.example.com/users/${params.userId}/notifications`, { headers: auth }),
-  ]);
-  return { user, orderCount: orders.length, unread: notifications.filter(n => !n.read).length };
+  const result = await ctx.http.post('https://api.example.com/login', {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...ctx.auth },
+    body: `username=${encodeURIComponent(params.username)}&password=${encodeURIComponent(params.password)}`,
+  });
+  return result;
+}
+```
+
+```javascript
+// JSON 提交（显式设置 Content-Type）
+export default async function(params, ctx) {
+  const result = await ctx.http.post('https://api.example.com/users', {
+    headers: { 'Content-Type': 'application/json', ...ctx.auth },
+    body: { name: params.name, email: params.email },
+  });
+  return result;
 }
 ```
 

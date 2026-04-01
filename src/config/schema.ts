@@ -6,7 +6,7 @@ const parameterDefSchema = z.object({
   required: z.boolean().optional(),
   default: z.any().optional(),
   description: z.string().optional(),
-  location: z.enum(['query', 'body', 'header', 'path']),
+  location: z.enum(['query', 'body', 'header', 'path', 'handler']),
   enum: z.array(z.string()).optional(),
 });
 

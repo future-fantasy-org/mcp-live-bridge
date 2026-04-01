@@ -89,10 +89,35 @@ describe('createHandlerContext', () => {
 
     const result = await ctx.http.post(`http://127.0.0.1:${port}/users`, {
       body: { name: 'Alice' },
+      headers: { 'Content-Type': 'application/json' },
     });
     expect(result.method).toBe('POST');
+    expect(result.headers['content-type']).toBe('application/json');
     const sentBody = JSON.parse(result.body);
     expect(sentBody.name).toBe('Alice');
+  });
+
+  it('http.post sends form-encoded body', async () => {
+    const httpClient = createHttpClient({ timeout: 5000 });
+    const ctx = createHandlerContext(httpClient, {}, {}, logger);
+
+    const result = await ctx.http.post(`http://127.0.0.1:${port}/login`, {
+      body: 'username=bob&password=secret',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    expect(result.method).toBe('POST');
+    expect(result.headers['content-type']).toBe('application/x-www-form-urlencoded');
+    expect(result.body).toBe('username=bob&password=secret');
+  });
+
+  it('http.post passes string body as-is without double stringify', async () => {
+    const httpClient = createHttpClient({ timeout: 5000 });
+    const ctx = createHandlerContext(httpClient, {}, {}, logger);
+
+    const result = await ctx.http.post(`http://127.0.0.1:${port}/data`, {
+      body: 'already encoded string',
+    });
+    expect(result.body).toBe('already encoded string');
   });
 
   it('http.get supports query params', async () => {

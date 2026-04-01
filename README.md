@@ -296,28 +296,37 @@ export default async function(params, ctx) {
 | Property | Description |
 |---|---|
 | `http.get(url, opts?)` | GET request, auto-parses JSON response |
-| `http.post(url, opts?)` | POST request, auto-serializes body to JSON |
-| `http.put(url, opts?)` | PUT request, auto-serializes body to JSON |
+| `http.post(url, opts?)` | POST request; object body auto-serialized to JSON, string body passed as-is |
+| `http.put(url, opts?)` | PUT request; object body auto-serialized to JSON, string body passed as-is |
 | `http.delete(url, opts?)` | DELETE request, auto-parses JSON response |
 | `http.request(req)` | Raw request (returns `{ status, body, headers }`) |
 | `auth` | Current auth headers (e.g., `{ Authorization: "Bearer ..." }`) |
 | `config` | `auth.config` values from config file |
 | `logger` | Logger instance (`info`, `debug`, `warn`, `error`) |
 
-All `http.*` methods accept an options object: `{ headers?, body?, params? }`. The `params` field appends query parameters to the URL.
+All `http.*` methods accept an options object: `{ headers?, body?, params? }`. The `params` field appends query parameters to the URL. The `body` field is auto-serialized to JSON when it's an object, or passed as-is when it's a string. The `Content-Type` header is **not** set automatically — you must set it yourself via `headers`.
 
 **More examples:**
 
 ```javascript
-// Parallel requests with Promise.all
+// Form-encoded POST
 export default async function(params, ctx) {
-  const { http, auth } = ctx;
-  const [user, orders, notifications] = await Promise.all([
-    http.get(`https://api.example.com/users/${params.userId}`, { headers: auth }),
-    http.get(`https://api.example.com/users/${params.userId}/orders`, { headers: auth }),
-    http.get(`https://api.example.com/users/${params.userId}/notifications`, { headers: auth }),
-  ]);
-  return { user, orderCount: orders.length, unread: notifications.filter(n => !n.read).length };
+  const result = await ctx.http.post('https://api.example.com/login', {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...ctx.auth },
+    body: `username=${encodeURIComponent(params.username)}&password=${encodeURIComponent(params.password)}`,
+  });
+  return result;
+}
+```
+
+```javascript
+// JSON POST (explicit Content-Type)
+export default async function(params, ctx) {
+  const result = await ctx.http.post('https://api.example.com/users', {
+    headers: { 'Content-Type': 'application/json', ...ctx.auth },
+    body: { name: params.name, email: params.email },
+  });
+  return result;
 }
 ```
 

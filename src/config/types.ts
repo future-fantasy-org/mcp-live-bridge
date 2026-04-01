@@ -3,7 +3,7 @@ export interface ParameterDef {
   required?: boolean;
   default?: any;
   description?: string;
-  location: 'query' | 'body' | 'header' | 'path';
+  location: 'query' | 'body' | 'header' | 'path' | 'handler';
   enum?: string[];
 }
 

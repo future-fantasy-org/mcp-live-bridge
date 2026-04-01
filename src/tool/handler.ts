@@ -61,16 +61,18 @@ export function createHandlerContext(
       },
       async post(url, options = {}) {
         const finalUrl = buildUrl(url, options.params);
-        const headers = { 'Content-Type': 'application/json', ...options.headers };
-        const body = options.body !== undefined ? JSON.stringify(options.body) : undefined;
-        const res = await httpClient.request({ url: finalUrl, method: 'POST', headers, body });
+        const body = options.body !== undefined
+          ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
+          : undefined;
+        const res = await httpClient.request({ url: finalUrl, method: 'POST', headers: options.headers ?? {}, body });
         return JSON.parse(res.body);
       },
       async put(url, options = {}) {
         const finalUrl = buildUrl(url, options.params);
-        const headers = { 'Content-Type': 'application/json', ...options.headers };
-        const body = options.body !== undefined ? JSON.stringify(options.body) : undefined;
-        const res = await httpClient.request({ url: finalUrl, method: 'PUT', headers, body });
+        const body = options.body !== undefined
+          ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
+          : undefined;
+        const res = await httpClient.request({ url: finalUrl, method: 'PUT', headers: options.headers ?? {}, body });
         return JSON.parse(res.body);
       },
       async delete(url, options = {}) {
