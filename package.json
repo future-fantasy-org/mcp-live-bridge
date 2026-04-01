@@ -10,7 +10,12 @@
     ".": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "README_zh.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "examples"
   ],
   "scripts": {
     "build": "tsup",
