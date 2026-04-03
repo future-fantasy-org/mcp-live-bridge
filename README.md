@@ -134,6 +134,19 @@ server:                             # Optional: Server settings
   host: 0.0.0.0                     # Default: 0.0.0.0
   port: 8080                        # Default: 8080
   cors_origin: "*"                  # Default: "*"
+  cors_allow_headers:               # Default: Content-Type, Authorization, MCP-Session-Id, Mcp-Protocol-Version
+    - Content-Type
+    - Authorization
+    - MCP-Session-Id
+    - Mcp-Protocol-Version
+  cors_allow_methods:               # Default: GET, POST, DELETE, OPTIONS
+    - GET
+    - POST
+    - DELETE
+    - OPTIONS
+  cors_expose_headers:              # Default: MCP-Session-Id, Mcp-Protocol-Version
+    - MCP-Session-Id
+    - Mcp-Protocol-Version
   timeout: 30000                    # Request timeout in ms (default: 30000)
   log_level: default                # "quiet" | "default" | "verbose" | "debug" (default: "default")
 

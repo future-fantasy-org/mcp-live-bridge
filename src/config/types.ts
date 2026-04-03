@@ -57,6 +57,9 @@ export interface ServerDef {
   host?: string;
   port?: number;
   cors_origin?: string;
+  cors_allow_headers?: string[];
+  cors_allow_methods?: string[];
+  cors_expose_headers?: string[];
   timeout?: number;
   log_level?: 'quiet' | 'default' | 'verbose' | 'debug';
 }

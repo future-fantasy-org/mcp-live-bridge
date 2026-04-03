@@ -136,6 +136,19 @@ server:                             # 可选：服务器设置
   host: 0.0.0.0                     # 默认：0.0.0.0
   port: 8080                        # 默认：8080
   cors_origin: "*"                  # 默认："*"
+  cors_allow_headers:               # 默认：Content-Type, Authorization, MCP-Session-Id, Mcp-Protocol-Version
+    - Content-Type
+    - Authorization
+    - MCP-Session-Id
+    - Mcp-Protocol-Version
+  cors_allow_methods:               # 默认：GET, POST, DELETE, OPTIONS
+    - GET
+    - POST
+    - DELETE
+    - OPTIONS
+  cors_expose_headers:              # 默认：MCP-Session-Id, Mcp-Protocol-Version
+    - MCP-Session-Id
+    - Mcp-Protocol-Version
   timeout: 30000                    # 请求超时时间，单位毫秒（默认：30000）
   log_level: default                # "quiet" | "default" | "verbose" | "debug"（默认："default"）
 

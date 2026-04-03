@@ -87,6 +87,9 @@ const serverDefSchema = z.object({
   host: z.string().default('0.0.0.0'),
   port: z.number().default(8080),
   cors_origin: z.string().default('*'),
+  cors_allow_headers: z.array(z.string()).default(['Content-Type', 'Authorization', 'MCP-Session-Id', 'Mcp-Protocol-Version']),
+  cors_allow_methods: z.array(z.string()).default(['GET', 'POST', 'DELETE', 'OPTIONS']),
+  cors_expose_headers: z.array(z.string()).default(['MCP-Session-Id', 'Mcp-Protocol-Version']),
   timeout: z.number().default(30000),
 });
 

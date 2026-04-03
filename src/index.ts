@@ -49,6 +49,9 @@ program
       const host = config.server?.host ?? '0.0.0.0';
       const port = config.server?.port ?? 8080;
       const corsOrigin = config.server?.cors_origin ?? '*';
+      const corsAllowHeaders = (config.server?.cors_allow_headers ?? ['Content-Type', 'Authorization', 'MCP-Session-Id', 'Mcp-Protocol-Version']).join(', ');
+      const corsAllowMethods = (config.server?.cors_allow_methods ?? ['GET', 'POST', 'DELETE', 'OPTIONS']).join(', ');
+      const corsExposeHeaders = (config.server?.cors_expose_headers ?? ['MCP-Session-Id', 'Mcp-Protocol-Version']).join(', ');
       const timeout = config.server?.timeout ?? 30000;
 
       logger.info(`Initializing auth provider: ${config.auth.provider}`);
@@ -161,9 +164,9 @@ program
       const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         // Handle CORS preflight
         res.setHeader('Access-Control-Allow-Origin', corsOrigin);
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, MCP-Session-Id, Mcp-Protocol-Version');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-Id, Mcp-Protocol-Version');
+        res.setHeader('Access-Control-Allow-Headers', corsAllowHeaders);
+        res.setHeader('Access-Control-Allow-Methods', corsAllowMethods);
+        res.setHeader('Access-Control-Expose-Headers', corsExposeHeaders);
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
           res.end();
